@@ -95,6 +95,37 @@ export const enum ActivityEventKind {
 	Other = 'other',
 }
 
+export const enum WireWorkerState {
+	Queued = 'queued',
+	Spawning = 'spawning',
+	Ready = 'ready',
+	Executing = 'executing',
+	Paused = 'paused',
+	Completing = 'completing',
+	Completed = 'completed',
+	Failed = 'failed',
+	TimedOut = 'timed_out',
+	Killed = 'killed',
+}
+
+export const enum WireTaskRunState {
+	Open = 'open',
+	Executing = 'executing',
+	Verifying = 'verifying',
+	Blocked = 'blocked',
+	Done = 'done',
+	Failed = 'failed',
+}
+
+export const enum WireTaskNodeStatus {
+	Pending = 'pending',
+	Running = 'running',
+	Completed = 'completed',
+	Failed = 'failed',
+	Blocked = 'blocked',
+	Cancelled = 'cancelled',
+}
+
 export interface IWireTaskPacketVerification {
 	readonly required: boolean;
 	readonly commands: readonly string[];
@@ -124,12 +155,12 @@ export interface IWireTaskPacketPushAuthorization {
 
 export interface IWireTaskPacketParallelization {
 	readonly mode: ParallelizationMode;
-	readonly group_id: string | undefined;
-	readonly lane_id: string | undefined;
+	readonly group_id?: string;
+	readonly lane_id?: string;
 	readonly peer_roles: readonly string[];
 	readonly owned_paths: readonly string[];
 	readonly avoid_paths: readonly string[];
-	readonly merge_strategy: ParallelMergeStrategy | undefined;
+	readonly merge_strategy?: ParallelMergeStrategy;
 }
 
 export interface IWireTaskPacketSubplannerContract {
@@ -141,9 +172,9 @@ export interface IWireTaskPacketSubplannerContract {
 }
 
 export interface IWireTaskPacketTemplateRefs {
-	readonly plan: string | undefined;
-	readonly spec: string | undefined;
-	readonly result: string | undefined;
+	readonly plan?: string;
+	readonly spec?: string;
+	readonly result?: string;
 }
 
 export interface IWireTaskPacket {
@@ -156,45 +187,45 @@ export interface IWireTaskPacket {
 	readonly constraints: readonly string[];
 	readonly artifacts: readonly string[];
 	readonly memory_keywords: readonly string[];
-	readonly handoff_type: HandoffType | undefined;
-	readonly playbook_id: string | undefined;
+	readonly handoff_type?: HandoffType;
+	readonly playbook_id?: string;
 	readonly phase_refs: readonly string[];
 	readonly context_paths: readonly string[];
-	readonly execution_prompt: string | undefined;
-	readonly template_refs: IWireTaskPacketTemplateRefs | undefined;
-	readonly verification: IWireTaskPacketVerification | undefined;
-	readonly review: IWireTaskPacketReview | undefined;
-	readonly preauthorized_next_step: IWirePreauthorizedNextStep | undefined;
+	readonly execution_prompt?: string;
+	readonly template_refs?: IWireTaskPacketTemplateRefs;
+	readonly verification?: IWireTaskPacketVerification;
+	readonly review?: IWireTaskPacketReview;
+	readonly preauthorized_next_step?: IWirePreauthorizedNextStep;
 	readonly requires_prompt_engineering: boolean;
-	readonly prompt_skill: string | undefined;
-	readonly git_branch: string | undefined;
-	readonly git_base: string | undefined;
+	readonly prompt_skill?: string;
+	readonly git_branch?: string;
+	readonly git_base?: string;
 	readonly allow_push: boolean;
 	readonly allow_merge: boolean;
-	readonly push_authorization: IWireTaskPacketPushAuthorization | undefined;
-	readonly commit_message_template: string | undefined;
-	readonly parallelization: IWireTaskPacketParallelization | undefined;
-	readonly subplanner_contract: IWireTaskPacketSubplannerContract | undefined;
+	readonly push_authorization?: IWireTaskPacketPushAuthorization;
+	readonly commit_message_template?: string;
+	readonly parallelization?: IWireTaskPacketParallelization;
+	readonly subplanner_contract?: IWireTaskPacketSubplannerContract;
 }
 
 export interface IWireAcceptanceResult {
 	readonly criterion: string;
 	readonly status: AcceptanceCheckStatus;
-	readonly evidence: string | undefined;
+	readonly evidence?: string;
 }
 
 export interface IWirePromotionRecord {
 	readonly task_id: string;
 	readonly dispatch_id: string;
 	readonly review_state: WireReviewState;
-	readonly reviewed_branch: string | undefined;
-	readonly reviewed_head_sha: string | undefined;
-	readonly judge_decision: ReviewDecision | undefined;
+	readonly reviewed_branch?: string;
+	readonly reviewed_head_sha?: string;
+	readonly judge_decision?: ReviewDecision;
 	readonly promotion_state: WirePromotionState;
-	readonly promotion_authorized_at: string | undefined;
+	readonly promotion_authorized_at?: string;
 	readonly integration_state: WireIntegrationState;
-	readonly merged_sha: string | undefined;
-	readonly merge_executor_id: string | undefined;
+	readonly merged_sha?: string;
+	readonly merge_executor_id?: string;
 }
 
 export interface IWireResultPacket {
@@ -207,12 +238,12 @@ export interface IWireResultPacket {
 	readonly artifacts: readonly string[];
 	readonly commands: readonly string[];
 	readonly risks: readonly string[];
-	readonly decision: ReviewDecision | undefined;
+	readonly decision?: ReviewDecision;
 	readonly acceptance_results: readonly IWireAcceptanceResult[];
 	readonly next_actions: readonly string[];
-	readonly git_branch: string | undefined;
-	readonly git_base: string | undefined;
-	readonly head_sha: string | undefined;
+	readonly git_branch?: string;
+	readonly git_base?: string;
+	readonly head_sha?: string;
 	readonly commit_shas: readonly string[];
 	readonly working_tree_clean: boolean;
 	readonly pushed: boolean;
@@ -230,17 +261,17 @@ export interface IWireObjectiveSpec {
 	readonly success_criteria: readonly string[];
 	readonly playbook_ids: readonly string[];
 	readonly priority: WireDispatchPriority;
-	readonly budget_ceiling_usd: number | undefined;
-	readonly max_parallel_workers: number | undefined;
+	readonly budget_ceiling_usd?: number;
+	readonly max_parallel_workers?: number;
 	readonly operator_notes: readonly string[];
 }
 
 export interface IWireDispatchCommand {
 	readonly role_id: string;
-	readonly task_id: string | undefined;
-	readonly from_role: string | undefined;
+	readonly task_id?: string | null;
+	readonly from_role?: string | null;
 	readonly message: string;
-	readonly subagent_nickname: string | undefined;
+	readonly subagent_nickname?: string | null;
 	readonly skip_gates: boolean;
 }
 
@@ -256,10 +287,10 @@ export interface IWireWorkspaceEvent {
 	readonly summary: string;
 	readonly next_action: string;
 	readonly artifacts: readonly string[];
-	readonly slack_channel: string | undefined;
-	readonly slack_thread_ts: string | undefined;
-	readonly notion_database_hint: string | undefined;
-	readonly notion_page_id: string | undefined;
+	readonly slack_channel: string | null;
+	readonly slack_thread_ts: string | null;
+	readonly notion_database_hint: string | null;
+	readonly notion_page_id: string | null;
 	readonly links: Readonly<Record<string, string>>;
 	readonly metadata: Readonly<Record<string, string>>;
 }
@@ -273,19 +304,19 @@ export interface IWireAgentActivityEvent {
 	readonly ts: string;
 	readonly dispatch_id: string;
 	readonly task_id: string;
-	readonly objective_id: string | undefined;
+	readonly objective_id?: string;
 	readonly role_id: string;
-	readonly handoff_type: HandoffType | undefined;
+	readonly handoff_type?: HandoffType;
 	readonly kind: ActivityEventKind;
 	readonly summary: string;
-	readonly tool: string | undefined;
-	readonly file_path: string | undefined;
-	readonly diff_stat: IWireDiffStat | undefined;
-	readonly command: string | undefined;
-	readonly exit_code: number | undefined;
-	readonly duration_ms: number | undefined;
-	readonly raw: unknown;
-	readonly payload: unknown;
+	readonly tool?: string;
+	readonly file_path?: string;
+	readonly diff_stat?: IWireDiffStat;
+	readonly command?: string;
+	readonly exit_code?: number;
+	readonly duration_ms?: number;
+	readonly raw?: unknown;
+	readonly payload?: unknown;
 }
 
 export const enum MemoryRecordType {
@@ -326,66 +357,66 @@ export const enum MemoryLifecycleState {
 export interface IWireMemoryReleaseLineage {
 	readonly base_ref: string;
 	readonly reviewed_head_sha: string;
-	readonly merged_sha: string | undefined;
+	readonly merged_sha?: string;
 }
 
 export interface IWireMemoryScopeContext {
-	readonly anchor_task_id: string | undefined;
-	readonly planner_id: string | undefined;
-	readonly release_lineage: IWireMemoryReleaseLineage | undefined;
+	readonly anchor_task_id?: string;
+	readonly planner_id?: string;
+	readonly release_lineage?: IWireMemoryReleaseLineage;
 }
 
 export interface IWireMemoryRecordHeader {
 	readonly record_id: string;
 	readonly memory_type: MemoryRecordType;
 	readonly scope: MemoryScope;
-	readonly scope_context: IWireMemoryScopeContext;
+	readonly scope_context?: IWireMemoryScopeContext;
 	readonly authority: MemoryAuthority;
 	readonly lifecycle: MemoryLifecycleState;
 	readonly task_id: string;
-	readonly dispatch_id: string | undefined;
+	readonly dispatch_id?: string;
 	readonly source_artifact_path: string;
 	readonly source_digest: string;
 	readonly created_by_role: string;
 	readonly created_by_actor: string;
 	readonly created_at: string;
-	readonly supersedes_record_id: string | undefined;
-	readonly derived_from_record_id: string | undefined;
+	readonly supersedes_record_id?: string;
+	readonly derived_from_record_id?: string;
 }
 
 export interface IWireMemoryDecisionBody {
 	readonly decision_text: string;
 	readonly scope_paths: readonly string[];
-	readonly rationale: string | undefined;
+	readonly rationale?: string;
 }
 
 export interface IWireMemoryInvariantBody {
 	readonly invariant_text: string;
 	readonly applies_to_paths: readonly string[];
-	readonly rationale: string | undefined;
+	readonly rationale?: string;
 }
 
 export interface IWireMemoryFindingBody {
 	readonly finding_text: string;
-	readonly evidence_summary: string | undefined;
+	readonly evidence_summary?: string;
 }
 
 export interface IWireMemoryFailurePatternBody {
 	readonly pattern_text: string;
-	readonly trigger_summary: string | undefined;
-	readonly remediation_hint: string | undefined;
+	readonly trigger_summary?: string;
+	readonly remediation_hint?: string;
 }
 
 export interface IWireMemoryProcedureBody {
 	readonly procedure_text: string;
-	readonly applicability: string | undefined;
-	readonly verification_hint: string | undefined;
+	readonly applicability?: string;
+	readonly verification_hint?: string;
 }
 
 export interface IWireMemoryOpenQuestionBody {
 	readonly question_text: string;
-	readonly blocking_reason: string | undefined;
-	readonly expires_at: string | undefined;
+	readonly blocking_reason?: string;
+	readonly expires_at?: string;
 }
 
 export type IWireMemoryRecordBody =

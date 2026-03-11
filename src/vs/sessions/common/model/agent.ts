@@ -12,22 +12,20 @@ export const enum AgentRole {
 }
 
 export const enum AgentStatus {
-	Queued = 'queued',
 	Spawning = 'spawning',
-	Ready = 'ready',
-	Executing = 'executing',
-	Paused = 'paused',
-	Completing = 'completing',
+	Running = 'running',
+	Idle = 'idle',
+	Blocked = 'blocked',
 	Completed = 'completed',
 	Failed = 'failed',
 	TimedOut = 'timed_out',
-	Killed = 'killed',
 }
 
 export interface IAgentState {
 	readonly dispatchId: string;
 	readonly taskId: string;
 	readonly roleId: string;
+	// Presentation state derived from raw worker_registry.state plus transcript/task context.
 	readonly status: AgentStatus;
 	readonly worktreePath: string | undefined;
 	readonly pid: number | undefined;

@@ -36,10 +36,15 @@ This folder implements the Atlas Phase 0b TypeScript contract from the current h
 - `objectiveId` stays optional on swarm/task surfaces because ad-hoc roots and fan-out tasks can exist without objective linkage.
 - `TaskPacket.acceptance` and `TaskPacket.constraints` stay array-shaped (`Vec<String>` in Rust).
 - `ReviewDecision` wire values stay exactly `go`, `no-go`, and `n/a`.
+- `wire.ts` mirrors raw serde payload shape:
+  - omitted keys stay optional in TypeScript
+  - non-skipped `Option<T>` fields stay nullable instead of being normalized away
 - The review model stays split into:
   - Advisory queue (`review.rs`)
   - Authoritative gate state (`review_candidates`)
   - Merge execution (`merge_queue`)
+- Review selection/navigation is keyed by `dispatch_id`, matching `review_candidates` and `merge_queue`.
+- Raw harness state enums live in `wire.ts`; `task.ts` and `agent.ts` remain Atlas presentation contracts from the Phase 0b plan.
 
 ## Atlas doc drift found while implementing
 

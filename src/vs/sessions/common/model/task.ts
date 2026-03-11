@@ -4,24 +4,20 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { AttentionLevel } from './attention.js';
-import { HandoffType, WireDispatchPriority } from './wire.js';
+import { HandoffType } from './wire.js';
 
 export const enum TaskStatus {
 	Queued = 'queued',
-	Paused = 'paused',
 	Executing = 'executing',
 	Blocked = 'blocked',
 	Reviewing = 'reviewing',
 	Completed = 'completed',
 	Failed = 'failed',
 	Cancelled = 'cancelled',
-	TimedOut = 'timed_out',
-	Killed = 'killed',
-	Merged = 'merged',
 }
 
 export type TaskHandoffType = HandoffType;
-export type TaskPriority = WireDispatchPriority;
+export type TaskPriority = number;
 
 export interface ITaskState {
 	readonly taskId: string;
