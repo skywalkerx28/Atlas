@@ -395,6 +395,7 @@ function normalizePoolMode(mode: string): PoolMode {
 		// Phase 0b presentation state does not expose an "unknown" pool mode, so
 		// fail closed to a degraded state instead of rendering unverified health as normal.
 		case 'unknown':
+			return POOL_MODE.paused;
 		case 'nats_down':
 			return POOL_MODE.natsDown;
 		case 'disk_pressure':
