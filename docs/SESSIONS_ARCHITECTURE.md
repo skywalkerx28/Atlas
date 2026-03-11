@@ -330,7 +330,7 @@ interface IFleetManagementService {
     selectAgent(dispatchId: string): void;
     selectTask(taskId: string): void;
     selectObjective(objectiveId: string): void;
-    selectReview(taskId: string): void;
+    selectReview(dispatchId: string): void;
 }
 ```
 
