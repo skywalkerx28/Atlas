@@ -675,7 +675,7 @@ export const enum HarnessConnectionState {
 export interface IHarnessConnectionInfo {
 	readonly state: HarnessConnectionState;
 	readonly mode: 'daemon' | 'polling' | 'none';
-	readonly writesEnabled: boolean;   // true only in daemon mode; polling is read-only
+	readonly writesEnabled: boolean;   // Wave A: false in all modes until daemon write families exist
 	readonly daemonVersion: string | undefined;
 	readonly schemaVersion: string | undefined;
 	readonly grantedCapabilities: readonly string[];
@@ -714,7 +714,7 @@ export interface IHarnessService {
 	getMemoryRecords(swarmId: string): Promise<readonly IMemoryRecord[]>;
 	getWorktreeState(dispatchId: string): Promise<IWorktreeState | undefined>;
 
-	// --- Control (writes — require daemon, rejected in polling mode) ---
+	// --- Control (Wave A: fail closed in all modes until daemon control methods exist) ---
 	pauseAgent(dispatchId: string): Promise<void>;
 	resumeAgent(dispatchId: string): Promise<void>;
 	cancelAgent(dispatchId: string): Promise<void>;
@@ -722,11 +722,11 @@ export interface IHarnessService {
 	pauseAll(): Promise<void>;
 	resumeAll(): Promise<void>;
 
-	// --- Dispatch (writes — require daemon, rejected in polling mode) ---
+	// --- Dispatch (Wave A: fail closed in all modes until daemon dispatch methods exist) ---
 	submitObjective(problemStatement: string, options?: IObjectiveSubmitOptions): Promise<string>;
 	submitDispatch(command: IWireDispatchCommand): Promise<string>;
 
-	// --- Review actions (writes — require daemon, rejected in polling mode) ---
+	// --- Review actions (Wave A: fail closed in all modes until daemon review methods exist) ---
 	// NOTE: The daemon does NOT expose a single "review.approve" that maps to a
 	// nonexistent CoreStore::record_review_decision(). Instead, the daemon wraps
 	// the actual stable harness mutation surface:
@@ -741,8 +741,8 @@ export interface IHarnessService {
 	enqueueForMerge(dispatchId: string): Promise<void>;
 
 	// --- Activity streams ---
-	subscribeAgentActivity(dispatchId: string): IObservable<readonly string[]>;
-	subscribeSwarmActivity(swarmId: string): IObservable<readonly string[]>;
+	subscribeAgentActivity(dispatchId: string): IObservable<readonly ITranscriptEntry[]>;
+	subscribeSwarmActivity(swarmId: string): IObservable<readonly ITranscriptEntry[]>;
 }
 ```
 
@@ -1226,7 +1226,7 @@ The UI layer uses `connectionState.writesEnabled` to disable action buttons when
 // In any view that has write actions:
 const canWrite = this.harnessService.connectionState.map(c => c.writesEnabled);
 // Disable "Approve", "Pause", "Cancel" buttons when canWrite is false
-// Show "Start daemon for full control" hint in the UI
+// Show "Writes unavailable in current Wave A bridge" hint in the UI
 ```
 
 #### 2.4 — Browser stub
@@ -1897,7 +1897,7 @@ Content layout:
 
 The diff rendering reuses the existing `ChangesViewPane` contribution — it already renders file diffs with inline stats. Extend it to accept a task/dispatch scope parameter instead of always showing the active session's changes.
 
-All write actions are disabled when `connectionState.writesEnabled` is false (polling mode). The UI shows "Start daemon for full control" when writes are unavailable.
+All write actions are disabled when `connectionState.writesEnabled` is false. In Wave A this is true in daemon mode, polling mode, and the browser stub, so the UI should explain that the current bridge is read-only rather than blaming polling alone.
 
 #### 6.5 — Batch review controller
 
@@ -1927,11 +1927,11 @@ Counter in the review editor header: "3 of 7 reviews remaining."
 
 ### Validation
 
-- Pre-review shows task spec, plan, risk assessment; action buttons disabled when daemon not connected
+- Pre-review shows task spec, plan, risk assessment; action buttons disabled when writes are unavailable
 - In-flight review streams live transcript and updates diff in real-time
 - Post-review shows **gate state** (Tier 2) as the authoritative verdict, advisory score (Tier 1) as a labeled hint — never conflated
 - Gate actions follow the three-step flow: verdict → promotion → merge
-- All write actions disabled with "daemon required" hint in polling mode
+- All write actions disabled with a Wave A read-only hint when writes are unavailable
 - Batch review auto-advances; counter updates correctly
 - Review badges in left rail update when gate states change
 
@@ -2387,7 +2387,7 @@ sessions/contrib/
 | Swarm derivation too slow for large task graphs | UI lag on reactive updates | Memoize derivation, debounce at 100ms, compute in web worker if needed |
 | DAG rendering performance | Janky objective boards | Start with SVG for small graphs (<20 nodes), switch to canvas if needed |
 | IHarnessService interface churn | Cascading changes across consumers | Phase 0a + 0b get thorough review before any consumer is built |
-| Polling mode UX when daemon absent | Operator frustration (read-only) | Clear "Start daemon for full control" messaging; polling still shows all state, just can't act on it |
+| Wave A read-only bridge UX | Operator frustration (cannot act yet) | Clear "Writes unavailable in current Wave A bridge" messaging; daemon and polling still surface fleet state truthfully |
 | Review model confusion (advisory vs authoritative) | Operator makes decisions on heuristic data | Advisory scores explicitly labeled as "heuristic" in UI; gate state clearly distinguished as "authoritative verdict" |
 | Multi-window state sync | Stale data in secondary windows | Each window has its own IHarnessService connected to the same daemon — daemon handles state, not Atlas |
 | Fork cleanup conflicts with new code | Merge conflicts | Coordinate with cleanup agent — new code goes in `sessions/`, cleanup targets `workbench/` and `extensions/` — orthogonal directories |

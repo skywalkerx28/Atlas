@@ -95,47 +95,56 @@ The central bridge between Atlas and the harness. Manages:
 ```typescript
 interface IHarnessService {
     // Connection
-    readonly connected: IObservable<boolean>;
-    connect(workspaceRoot: URI, dbPath?: string): Promise<void>;
-    disconnect(): void;
+    readonly connectionState: IObservable<IHarnessConnectionInfo>;
+    connect(workspaceRoot: URI): Promise<void>;
+    disconnect(): Promise<void>;
+    readonly onDidDisconnect: Event<void>;
 
-    // Fleet state (read from SQLite)
-    readonly swarms: IObservable<ISwarmState[]>;
-    readonly agents: IObservable<IAgentState[]>;
-    readonly tasks: IObservable<ITaskState[]>;
-    readonly objectives: IObservable<IObjectiveState[]>;
-    readonly queueDepth: IObservable<number>;
+    // Fleet state
+    readonly objectives: IObservable<readonly IObjectiveState[]>;
+    readonly swarms: IObservable<readonly ISwarmState[]>;
+    readonly tasks: IObservable<readonly ITaskState[]>;
+    readonly fleet: IObservable<IFleetState>;
     readonly health: IObservable<IHealthState>;
     readonly cost: IObservable<ICostState>;
-    readonly reviewQueue: IObservable<IReviewEntry[]>;
-    readonly mergeQueue: IObservable<IMergeEntry[]>;
 
-    // Activity stream (read from JSONL)
-    readonly activityEvents: Event<IActivityEvent>;
-
-    // Control actions (Wave A: fail closed in all modes)
-    pause(dispatchId: string): Promise<void>;
-    cancel(dispatchId: string): Promise<void>;
-    resume(dispatchId: string): Promise<void>;
-    pauseAll(): Promise<void>;
-    resumeAll(): Promise<void>;
-    reprioritize(dispatchId: string, priority: Priority): Promise<void>;
-
-    // Dispatch (Wave A: fail closed until daemon exposes dispatch methods)
-    dispatch(packet: ITaskPacket): Promise<IDispatchOutcome>;
-    submitObjective(spec: IObjectiveSpec): Promise<string>;
-
-    // Workspace events (Wave A: fail closed until daemon exposes event/control methods)
-    steer(dispatchId: string, message: string): Promise<void>;
-    emitEvent(event: IWorkspaceEvent): Promise<void>;
+    // Three-tier review state
+    readonly advisoryReviewQueue: IObservable<readonly IAdvisoryReviewEntry[]>;
+    readonly reviewGates: IObservable<readonly IReviewGateState[]>;
+    readonly mergeQueue: IObservable<readonly IMergeEntry[]>;
 
     // Inspection
+    getObjective(objectiveId: string): Promise<IObjectiveState | undefined>;
     getSwarm(swarmId: string): Promise<ISwarmState | undefined>;
-    getTranscript(dispatchId: string, lastN?: number): Promise<ITranscriptEntry[]>;
-    getWorktreeDiff(dispatchId: string): Promise<IDiffEntry[]>;
-    getResultPacket(dispatchId: string): Promise<IResultPacket | undefined>;
+    getTask(taskId: string): Promise<ITaskState | undefined>;
+    getAgent(dispatchId: string): Promise<IAgentState | undefined>;
+    getReviewGate(dispatchId: string): Promise<IReviewGateState | undefined>;
     getTaskPacket(taskId: string): Promise<ITaskPacket | undefined>;
-    replayDispatch(dispatchId: string): Promise<IDispatchTransition[]>;
+    getResultPacket(dispatchId: string): Promise<IResultPacket | undefined>;
+    getTranscript(dispatchId: string): Promise<readonly ITranscriptEntry[]>;
+    getMemoryRecords(swarmId: string): Promise<readonly IMemoryRecord[]>;
+    getWorktreeState(dispatchId: string): Promise<IWorktreeState | undefined>;
+
+    // Control actions (Wave A: fail closed in all modes)
+    pauseAgent(dispatchId: string): Promise<void>;
+    cancelAgent(dispatchId: string): Promise<void>;
+    resumeAgent(dispatchId: string): Promise<void>;
+    steerAgent(dispatchId: string, message: string): Promise<void>;
+    pauseAll(): Promise<void>;
+    resumeAll(): Promise<void>;
+
+    // Dispatch (Wave A: fail closed until daemon exposes dispatch methods)
+    submitObjective(problemStatement: string, options?: IObjectiveSubmitOptions): Promise<string>;
+    submitDispatch(command: IWireDispatchCommand): Promise<string>;
+
+    // Review actions (Wave A: fail closed until daemon exposes review methods)
+    recordGateVerdict(dispatchId: string, decision: ReviewDecision, reviewedByRole: string): Promise<void>;
+    authorizePromotion(dispatchId: string, authorizedByRole: string): Promise<void>;
+    enqueueForMerge(dispatchId: string): Promise<void>;
+
+    // Activity
+    subscribeAgentActivity(dispatchId: string): IObservable<readonly ITranscriptEntry[]>;
+    subscribeSwarmActivity(swarmId: string): IObservable<readonly ITranscriptEntry[]>;
 }
 ```
 
