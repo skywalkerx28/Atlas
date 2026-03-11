@@ -12,6 +12,7 @@ import { ILogService } from '../../../../platform/log/common/log.js';
 import {
 	HARNESS_JSONRPC_VERSION,
 	HARNESS_PROTOCOL_VERSION,
+	HARNESS_SCHEMA_VERSION,
 	type HarnessDaemonRequestMethod,
 	type HarnessRequestParams,
 	type HarnessRequestResult,
@@ -24,6 +25,24 @@ import type { HarnessCapability, IHarnessInitializeParams, IHarnessInitializeRes
 const DEFAULT_CONNECT_TIMEOUT_MS = 5_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 5_000;
 const DEFAULT_MAX_FRAME_BYTES = 4 * 1024 * 1024;
+
+export class HarnessDaemonUnavailableError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = 'HarnessDaemonUnavailableError';
+	}
+}
+
+export class HarnessDaemonProtocolError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = 'HarnessDaemonProtocolError';
+	}
+}
+
+export function isHarnessDaemonUnavailableError(error: unknown): error is HarnessDaemonUnavailableError {
+	return error instanceof HarnessDaemonUnavailableError;
+}
 
 interface IPendingRequest {
 	readonly method: HarnessDaemonRequestMethod;
@@ -139,7 +158,7 @@ export class HarnessDaemonClient extends Disposable {
 
 				clearTimeout(timeoutHandle);
 				this.pendingRequests.delete(id);
-				reject(asError(error));
+				reject(normalizeSocketTransportError(asError(error)));
 			});
 		});
 
@@ -179,7 +198,7 @@ export class HarnessDaemonClient extends Disposable {
 				};
 				const onError = (error: Error) => {
 					cleanup();
-					rejectConnect(error);
+					rejectConnect(normalizeSocketTransportError(error));
 				};
 				const cleanup = () => {
 					socket.off('connect', onConnect);
@@ -191,10 +210,10 @@ export class HarnessDaemonClient extends Disposable {
 			});
 
 			raceTimeout(connectPromise, timeoutMs, () => {
-				socket.destroy(new Error(`Timed out connecting to harness daemon socket: ${socketPath}`));
+				socket.destroy(new HarnessDaemonUnavailableError(`Timed out connecting to harness daemon socket: ${socketPath}`));
 			}).then(result => {
 				if (!result) {
-					reject(new Error(`Timed out connecting to harness daemon socket: ${socketPath}`));
+					reject(new HarnessDaemonUnavailableError(`Timed out connecting to harness daemon socket: ${socketPath}`));
 					return;
 				}
 				resolve(result);
@@ -213,13 +232,13 @@ export class HarnessDaemonClient extends Disposable {
 
 		socket.on('data', chunk => this.onSocketData(chunk));
 		socket.on('close', () => this.handleSocketClosed(undefined));
-		socket.on('error', error => this.handleSocketClosed(asError(error)));
+		socket.on('error', error => this.handleSocketClosed(normalizeSocketTransportError(asError(error))));
 	}
 
 	private onSocketData(chunk: Buffer): void {
 		this.readBuffer += chunk.toString('utf8');
 		if (Buffer.byteLength(this.readBuffer, 'utf8') > this.maxFrameBytes) {
-			this.failConnection(new Error('Harness daemon sent a frame larger than the negotiated limit.'));
+			this.failConnection(new HarnessDaemonProtocolError('Harness daemon sent a frame larger than the negotiated limit.'));
 			return;
 		}
 
@@ -239,12 +258,12 @@ export class HarnessDaemonClient extends Disposable {
 		try {
 			message = JSON.parse(frame);
 		} catch (error) {
-			this.failConnection(new Error(`Malformed harness daemon JSON-RPC frame: ${asError(error).message}`));
+			this.failConnection(new HarnessDaemonProtocolError(`Malformed harness daemon JSON-RPC frame: ${asError(error).message}`));
 			return;
 		}
 
 		if (!isObject(message) || message.jsonrpc !== HARNESS_JSONRPC_VERSION) {
-			this.failConnection(new Error('Harness daemon sent an invalid JSON-RPC envelope.'));
+			this.failConnection(new HarnessDaemonProtocolError('Harness daemon sent an invalid JSON-RPC envelope.'));
 			return;
 		}
 
@@ -252,7 +271,7 @@ export class HarnessDaemonClient extends Disposable {
 
 		if (typeof record.method === 'string') {
 			if (Object.prototype.hasOwnProperty.call(record, 'id') && record.id !== undefined) {
-				this.failConnection(new Error(`Harness daemon sent an unexpected server request: ${record.method}`));
+				this.failConnection(new HarnessDaemonProtocolError(`Harness daemon sent an unexpected server request: ${record.method}`));
 				return;
 			}
 			this.handleNotificationMessage(record as unknown as IHarnessDaemonNotification);
@@ -264,18 +283,18 @@ export class HarnessDaemonClient extends Disposable {
 			return;
 		}
 
-		this.failConnection(new Error('Harness daemon sent an unrecognized JSON-RPC message shape.'));
+		this.failConnection(new HarnessDaemonProtocolError('Harness daemon sent an unrecognized JSON-RPC message shape.'));
 	}
 
 	private handleResponseMessage(response: IHarnessDaemonResponse): void {
 		if (typeof response.id !== 'number') {
-			this.failConnection(new Error('Harness daemon response did not correlate to a client request id.'));
+			this.failConnection(new HarnessDaemonProtocolError('Harness daemon response did not correlate to a client request id.'));
 			return;
 		}
 
 		const pending = this.pendingRequests.get(response.id);
 		if (!pending) {
-			this.failConnection(new Error(`Harness daemon response referenced unknown request id ${response.id}.`));
+			this.failConnection(new HarnessDaemonProtocolError(`Harness daemon response referenced unknown request id ${response.id}.`));
 			return;
 		}
 
@@ -303,23 +322,29 @@ export class HarnessDaemonClient extends Disposable {
 
 	private validateInitializeResult(result: IHarnessInitializeResult): void {
 		if (result.protocol_version !== HARNESS_PROTOCOL_VERSION) {
-			throw new Error(`Harness daemon protocol mismatch: expected ${HARNESS_PROTOCOL_VERSION}, got ${result.protocol_version}.`);
+			throw new HarnessDaemonProtocolError(`Harness daemon protocol mismatch: expected ${HARNESS_PROTOCOL_VERSION}, got ${result.protocol_version}.`);
+		}
+		if (result.schema_version !== HARNESS_SCHEMA_VERSION) {
+			throw new HarnessDaemonProtocolError(`Harness daemon schema mismatch: expected ${HARNESS_SCHEMA_VERSION}, got ${result.schema_version}.`);
 		}
 		if (!result.daemon_info?.version || !result.daemon_info?.harness_version) {
-			throw new Error('Harness daemon initialize response is missing daemon_info.');
+			throw new HarnessDaemonProtocolError('Harness daemon initialize response is missing daemon_info.');
 		}
 		if (!Array.isArray(result.granted_capabilities) || !result.granted_capabilities.includes('read')) {
-			throw new Error('Harness daemon initialize response did not grant read capability.');
+			throw new HarnessDaemonProtocolError('Harness daemon initialize response did not grant read capability.');
+		}
+		if (!Array.isArray(result.supported_methods)) {
+			throw new HarnessDaemonProtocolError('Harness daemon initialize response is missing supported_methods.');
 		}
 
 		for (const requiredMethod of ['shutdown', 'fleet.snapshot', 'fleet.subscribe', 'fleet.unsubscribe'] as const) {
 			if (!result.supported_methods.includes(requiredMethod)) {
-				throw new Error(`Harness daemon initialize response is missing required method '${requiredMethod}'.`);
+				throw new HarnessDaemonProtocolError(`Harness daemon initialize response is missing required method '${requiredMethod}'.`);
 			}
 		}
 
 		if (!result.limits || result.limits.max_message_bytes <= 0) {
-			throw new Error('Harness daemon initialize response is missing valid limits.');
+			throw new HarnessDaemonProtocolError('Harness daemon initialize response is missing valid limits.');
 		}
 	}
 
@@ -366,6 +391,19 @@ function renderJsonRpcError(method: string, error: IHarnessJsonRpcError): string
 
 function asError(error: unknown): Error {
 	return error instanceof Error ? error : new Error(String(error));
+}
+
+function normalizeSocketTransportError(error: Error): Error {
+	if (error instanceof HarnessDaemonUnavailableError || error instanceof HarnessDaemonProtocolError) {
+		return error;
+	}
+
+	const code = (error as { code?: unknown }).code;
+	if (typeof code === 'string' && ['ECONNREFUSED', 'ECONNRESET', 'ENOENT', 'EPIPE', 'ETIMEDOUT'].includes(code)) {
+		return new HarnessDaemonUnavailableError(error.message);
+	}
+
+	return error;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

@@ -201,7 +201,7 @@ export function toPresentationHealth(state: IHarnessFleetStateSnapshot): AtlasMo
 	const mode = normalizePoolMode(health.mode);
 
 	let attentionLevel = ATTENTION.idle;
-	if (health.mode !== 'unknown' && mode !== POOL_MODE.normal) {
+	if (mode !== POOL_MODE.normal) {
 		attentionLevel = ATTENTION.needsAction;
 	} else if (state.queue.mergeConflicts > 0) {
 		attentionLevel = ATTENTION.needsAction;
@@ -392,6 +392,9 @@ function toAgentAttention(status: AgentStatus): AttentionLevel {
 
 function normalizePoolMode(mode: string): PoolMode {
 	switch (mode) {
+		// Phase 0b presentation state does not expose an "unknown" pool mode, so
+		// fail closed to a degraded state instead of rendering unverified health as normal.
+		case 'unknown':
 		case 'nats_down':
 			return POOL_MODE.natsDown;
 		case 'disk_pressure':
@@ -401,8 +404,9 @@ function normalizePoolMode(mode: string): PoolMode {
 		case 'paused':
 			return POOL_MODE.paused;
 		case 'normal':
-		default:
 			return POOL_MODE.normal;
+		default:
+			return POOL_MODE.paused;
 	}
 }
 

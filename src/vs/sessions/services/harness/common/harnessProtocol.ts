@@ -17,7 +17,8 @@ import type {
 } from './harnessTypes.js';
 
 export const HARNESS_JSONRPC_VERSION = '2.0';
-export const HARNESS_PROTOCOL_VERSION = '2026-03-01';
+export const HARNESS_PROTOCOL_VERSION = '1.0';
+export const HARNESS_SCHEMA_VERSION = '2026-03-01';
 
 export type HarnessJsonRpcId = number | string | null;
 export type HarnessClientRequestId = number;

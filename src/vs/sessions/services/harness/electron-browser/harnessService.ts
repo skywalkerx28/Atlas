@@ -8,6 +8,7 @@ import * as fs from 'fs/promises';
 import { join } from '../../../../base/common/path.js';
 import { env } from '../../../../base/common/process.js';
 import { constObservable, IObservable, observableValue } from '../../../../base/common/observable.js';
+import { isEqualOrParent } from '../../../../base/common/resources.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { URI } from '../../../../base/common/uri.js';
@@ -15,7 +16,7 @@ import { InstantiationType, registerSingleton } from '../../../../platform/insta
 import { ILogService } from '../../../../platform/log/common/log.js';
 import { IProductService } from '../../../../platform/product/common/productService.js';
 import { INativeWorkbenchEnvironmentService } from '../../../../workbench/services/environment/electron-browser/environmentService.js';
-import { HarnessDaemonClient } from './harnessDaemonClient.js';
+import { HarnessDaemonClient, HarnessDaemonUnavailableError, isHarnessDaemonUnavailableError } from './harnessDaemonClient.js';
 import {
 	applyDaemonFleetDelta,
 	createEmptyFleetSnapshotState,
@@ -59,6 +60,7 @@ export class HarnessService extends Disposable implements IHarnessService {
 	private fleetSnapshotState = createEmptyFleetSnapshotState();
 	private currentFleetSubscriptionId: string | undefined;
 	private disconnectRequested = false;
+	private workspaceRoot: URI | undefined;
 
 	constructor(
 		@INativeWorkbenchEnvironmentService private readonly environmentService: INativeWorkbenchEnvironmentService,
@@ -69,10 +71,10 @@ export class HarnessService extends Disposable implements IHarnessService {
 	}
 
 	async connect(workspaceRoot: URI): Promise<void> {
-		void workspaceRoot;
 		this.disconnectRequested = true;
 		await this.teardownConnection(true);
 		this.disconnectRequested = false;
+		this.workspaceRoot = workspaceRoot;
 		this.resetReadState();
 
 		this.setConnectionState({
@@ -86,13 +88,27 @@ export class HarnessService extends Disposable implements IHarnessService {
 		});
 
 		try {
-			await this.connectDaemon();
+			await this.connectDaemon(workspaceRoot);
 			return;
 		} catch (error) {
 			const daemonError = asError(error);
+			if (!this.canFallBackToPolling(error)) {
+				this.logService.error(`Harness daemon connection failed closed: ${daemonError.message}`);
+				this.resetReadState();
+				this.setConnectionState({
+					state: HarnessConnectionState.Error,
+					mode: 'none',
+					writesEnabled: false,
+					daemonVersion: undefined,
+					schemaVersion: undefined,
+					grantedCapabilities: Object.freeze([]),
+					errorMessage: daemonError.message,
+				});
+				throw daemonError;
+			}
 			this.logService.info(`Harness daemon unavailable, falling back to read-only polling: ${daemonError.message}`);
 			try {
-				await this.startPolling();
+				await this.startPolling(workspaceRoot);
 				return;
 			} catch (pollError) {
 				const resolvedPollingError = asError(pollError);
@@ -116,6 +132,7 @@ export class HarnessService extends Disposable implements IHarnessService {
 		this.disconnectRequested = true;
 		await this.teardownConnection(false);
 		this.resetReadState();
+		this.workspaceRoot = undefined;
 		this.setConnectionState(disconnectedConnectionState());
 	}
 
@@ -211,9 +228,11 @@ export class HarnessService extends Disposable implements IHarnessService {
 		return EMPTY_TRANSCRIPTS;
 	}
 
-	private async connectDaemon(): Promise<void> {
+	private async connectDaemon(workspaceRoot: URI): Promise<void> {
+		const managedAssignments = await this.readManagedFrontierAssignments();
+		const socketPath = await this.resolveDaemonSocketPath(workspaceRoot, managedAssignments);
+		await this.ensureDaemonSocketPath(socketPath);
 		const token = await this.readDaemonClientToken();
-		const socketPath = this.resolveDaemonSocketPath();
 		const client = new HarnessDaemonClient(this.logService);
 
 		client.onDidNotification(notification => {
@@ -262,8 +281,8 @@ export class HarnessService extends Disposable implements IHarnessService {
 		}
 	}
 
-	private async startPolling(): Promise<void> {
-		const dbPath = await this.resolveRouterDbPath();
+	private async startPolling(workspaceRoot: URI): Promise<void> {
+		const dbPath = await this.resolveRouterDbPath(workspaceRoot);
 		const poller = new HarnessSqlitePoller(dbPath, this.logService);
 		poller.onDidSnapshot(snapshot => {
 			this.fleetSnapshotState = snapshot;
@@ -325,6 +344,22 @@ export class HarnessService extends Disposable implements IHarnessService {
 		this.logService.warn(`Harness daemon disconnected: ${error?.message ?? 'connection closed'}`);
 		this.currentFleetSubscriptionId = undefined;
 		this.daemonClient = undefined;
+
+		if (!this.canFallBackToPolling(error)) {
+			this.resetReadState();
+			this.setConnectionState({
+				state: HarnessConnectionState.Error,
+				mode: 'none',
+				writesEnabled: false,
+				daemonVersion: undefined,
+				schemaVersion: undefined,
+				grantedCapabilities: Object.freeze([]),
+				errorMessage: error?.message ?? 'Harness daemon disconnected unexpectedly.',
+			});
+			this._onDidDisconnect.fire();
+			return;
+		}
+
 		this.setConnectionState({
 			state: HarnessConnectionState.Reconnecting,
 			mode: 'daemon',
@@ -336,7 +371,10 @@ export class HarnessService extends Disposable implements IHarnessService {
 		});
 
 		try {
-			await this.startPolling();
+			if (!this.workspaceRoot) {
+				throw new Error('Harness workspace root is unavailable for read-only fallback.');
+			}
+			await this.startPolling(this.workspaceRoot);
 			this._onDidDisconnect.fire();
 		} catch (pollError) {
 			const resolved = asError(pollError);
@@ -407,12 +445,42 @@ export class HarnessService extends Disposable implements IHarnessService {
 		throw new Error(DAEMON_REQUIRED_ERROR);
 	}
 
-	private resolveDaemonSocketPath(): string {
+	private canFallBackToPolling(error: unknown): boolean {
+		return error === undefined || isHarnessDaemonUnavailableError(error);
+	}
+
+	private async resolveDaemonSocketPath(workspaceRoot: URI, managedAssignments: Map<string, string>): Promise<string> {
 		const override = nonEmpty(env['AXIOM_HARNESS_SOCK']);
 		if (override) {
 			return override;
 		}
+
+		const workspaceSocket = join(workspaceRoot.fsPath, '.codex', 'harness.sock');
+		if (await isSocket(workspaceSocket)) {
+			return workspaceSocket;
+		}
+
+		if (!(await this.hasWorkspaceBackedHarness(workspaceRoot, managedAssignments))) {
+			throw new HarnessDaemonUnavailableError(`No harness daemon socket is configured for workspace ${workspaceRoot.fsPath}.`);
+		}
+
 		return join(this.environmentService.userHome.fsPath, '.codex', 'harness.sock');
+	}
+
+	private async ensureDaemonSocketPath(socketPath: string): Promise<void> {
+		try {
+			const stats = await fs.stat(socketPath);
+			if (!stats.isSocket()) {
+				throw new Error(`Harness daemon socket path is not a Unix socket: ${socketPath}`);
+			}
+		} catch (error) {
+			const resolved = asError(error);
+			const code = (resolved as { code?: unknown }).code;
+			if (code === 'ENOENT') {
+				throw new HarnessDaemonUnavailableError(`Harness daemon socket not found: ${socketPath}`);
+			}
+			throw resolved;
+		}
 	}
 
 	private async readDaemonClientToken(): Promise<string> {
@@ -425,7 +493,7 @@ export class HarnessService extends Disposable implements IHarnessService {
 		return token;
 	}
 
-	private async resolveRouterDbPath(): Promise<string> {
+	private async resolveRouterDbPath(workspaceRoot: URI): Promise<string> {
 		for (const key of ['AXIOM_FRONTIER_RUNNER_DB', 'AXIOM_WORKSPACE_ROUTER_STATE_DB', 'AXIOM_WORKSPACE_ROUTER_DB', 'AXIOM_INTEGRATION_DB_PATH'] as const) {
 			const value = nonEmpty(env[key]);
 			if (value) {
@@ -433,18 +501,27 @@ export class HarnessService extends Disposable implements IHarnessService {
 			}
 		}
 
+		for (const candidate of [
+			join(workspaceRoot.fsPath, 'router.db'),
+			join(workspaceRoot.fsPath, '.codex', 'workspace-comms', 'router.db'),
+		]) {
+			if (await isFile(candidate)) {
+				return candidate;
+			}
+		}
+
 		const managedAssignments = await this.readManagedFrontierAssignments();
-		const activeValidationDb = await this.resolveActiveValidationDbPath(managedAssignments.get('AXIOM_HARNESS_HOME'));
+		const activeValidationDb = await this.resolveActiveValidationDbPath(managedAssignments.get('AXIOM_HARNESS_HOME'), workspaceRoot);
 		if (activeValidationDb) {
 			return activeValidationDb;
 		}
 
 		const managedDb = nonEmpty(managedAssignments.get('AXIOM_FRONTIER_RUNNER_DB'));
-		if (managedDb) {
+		if (managedDb && this.matchesWorkspaceRoot(workspaceRoot, nonEmpty(managedAssignments.get('AXIOM_FRONTIER_REPO_ROOT')) ?? nonEmpty(managedAssignments.get('AXIOM_HARNESS_HOME')))) {
 			return managedDb;
 		}
 
-		return join(this.environmentService.userHome.fsPath, '.codex', 'workspace-comms', 'router.db');
+		throw new Error(`No harness router database could be resolved for workspace ${workspaceRoot.fsPath}.`);
 	}
 
 	private async readManagedFrontierAssignments(): Promise<Map<string, string>> {
@@ -473,30 +550,63 @@ export class HarnessService extends Disposable implements IHarnessService {
 		}
 	}
 
-	private async resolveActiveValidationDbPath(managedHarnessHome: string | undefined): Promise<string | undefined> {
-		const harnessHome = nonEmpty(env['AXIOM_HARNESS_HOME']) ?? nonEmpty(managedHarnessHome);
-		if (!harnessHome) {
-			return undefined;
-		}
-
-		const runsRoot = join(harnessHome, '.codex', 'soak-runs');
-		let entries: string[];
-		try {
-			entries = await fs.readdir(runsRoot);
-		} catch {
-			return undefined;
-		}
-
-		entries.sort((left, right) => right.localeCompare(left));
-		for (const entry of entries) {
-			const runRoot = join(runsRoot, entry);
-			if (!(await this.isActiveValidationRun(runRoot))) {
+	private async resolveActiveValidationDbPath(managedHarnessHome: string | undefined, workspaceRoot: URI): Promise<string | undefined> {
+		for (const harnessHome of distinctPaths([
+			nonEmpty(env['AXIOM_HARNESS_HOME']),
+			workspaceRoot.fsPath,
+			nonEmpty(managedHarnessHome),
+		])) {
+			const runsRoot = join(harnessHome, '.codex', 'soak-runs');
+			let entries: string[];
+			try {
+				entries = await fs.readdir(runsRoot);
+			} catch {
 				continue;
 			}
-			return join(runRoot, 'router.db');
+
+			entries.sort((left, right) => right.localeCompare(left));
+			for (const entry of entries) {
+				const runRoot = join(runsRoot, entry);
+				if (!this.matchesWorkspaceRoot(workspaceRoot, join(runRoot, 'workspace'))) {
+					continue;
+				}
+				if (!(await this.isActiveValidationRun(runRoot))) {
+					continue;
+				}
+				return join(runRoot, 'router.db');
+			}
 		}
 
 		return undefined;
+	}
+
+	private async hasWorkspaceBackedHarness(workspaceRoot: URI, managedAssignments: Map<string, string>): Promise<boolean> {
+		if (this.matchesWorkspaceRoot(workspaceRoot, nonEmpty(env['AXIOM_FRONTIER_REPO_ROOT']))
+			|| this.matchesWorkspaceRoot(workspaceRoot, nonEmpty(env['AXIOM_HARNESS_HOME']))
+			|| this.matchesWorkspaceRoot(workspaceRoot, nonEmpty(managedAssignments.get('AXIOM_FRONTIER_REPO_ROOT')))
+			|| this.matchesWorkspaceRoot(workspaceRoot, nonEmpty(managedAssignments.get('AXIOM_HARNESS_HOME')))) {
+			return true;
+		}
+
+		for (const candidate of [
+			join(workspaceRoot.fsPath, 'router.db'),
+			join(workspaceRoot.fsPath, '.codex', 'workspace-comms', 'router.db'),
+		]) {
+			if (await isFile(candidate)) {
+				return true;
+			}
+		}
+
+		return (await this.resolveActiveValidationDbPath(managedAssignments.get('AXIOM_HARNESS_HOME'), workspaceRoot)) !== undefined;
+	}
+
+	private matchesWorkspaceRoot(workspaceRoot: URI, candidatePath: string | undefined): boolean {
+		if (!candidatePath) {
+			return false;
+		}
+
+		const candidateUri = URI.file(candidatePath);
+		return isEqualOrParent(workspaceRoot, candidateUri) || isEqualOrParent(candidateUri, workspaceRoot);
 	}
 
 	private async isActiveValidationRun(runRoot: string): Promise<boolean> {
@@ -550,6 +660,28 @@ async function isFile(targetPath: string): Promise<boolean> {
 	} catch {
 		return false;
 	}
+}
+
+async function isSocket(targetPath: string): Promise<boolean> {
+	try {
+		return (await fs.stat(targetPath)).isSocket();
+	} catch {
+		return false;
+	}
+}
+
+function distinctPaths(values: readonly (string | undefined)[]): readonly string[] {
+	const seen = new Set<string>();
+	const result: string[] = [];
+	for (const value of values) {
+		const normalized = nonEmpty(value);
+		if (!normalized || seen.has(normalized)) {
+			continue;
+		}
+		seen.add(normalized);
+		result.push(normalized);
+	}
+	return result;
 }
 
 async function recentEnough(targetPath: string): Promise<boolean> {
