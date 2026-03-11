@@ -55,8 +55,6 @@ export const unicodeFilter = Object.freeze<string[]>([
 	'!extensions/php-language-features/src/features/phpGlobalFunctions.ts',
 	'!extensions/terminal-suggest/src/completions/upstream/**',
 	'!extensions/typescript-language-features/test-workspace/**',
-	'!extensions/vscode-api-tests/testWorkspace/**',
-	'!extensions/vscode-api-tests/testWorkspace2/**',
 	'!extensions/**/dist/**',
 	'!extensions/**/out/**',
 	'!extensions/**/snippets/**',
@@ -104,8 +102,6 @@ export const indentationFilter = Object.freeze<string[]>([
 	'!extensions/typescript-language-features/package-manager/node-maintainer/**',
 	'!extensions/markdown-math/notebook-out/**',
 	'!extensions/ipynb/notebook-out/**',
-	'!extensions/vscode-api-tests/testWorkspace/**',
-	'!extensions/vscode-api-tests/testWorkspace2/**',
 	'!build/monaco/**',
 	'!build/win32/**',
 	'!build/checker/**',
@@ -149,7 +145,6 @@ export const indentationFilter = Object.freeze<string[]>([
 	'!extensions/markdown-math/notebook-out/*.js',
 	'!extensions/ipynb/notebook-out/**',
 	'!extensions/notebook-renderers/renderer-out/*.js',
-	'!extensions/simple-browser/media/*.js',
 ]);
 
 export const copyrightFilter = Object.freeze<string[]>([
@@ -188,7 +183,6 @@ export const copyrightFilter = Object.freeze<string[]>([
 	'!extensions/markdown-language-features/media/highlight.css',
 	'!extensions/markdown-math/notebook-out/**',
 	'!extensions/ipynb/notebook-out/**',
-	'!extensions/simple-browser/media/codicon.css',
 	'!extensions/terminal-suggest/src/completions/upstream/**',
 	'!extensions/typescript-language-features/node-maintainer/**',
 	'!extensions/html-language-features/server/src/modes/typescript/*',
@@ -207,8 +201,6 @@ export const tsFormattingFilter = Object.freeze<string[]>([
 	'!**/typings/**',
 	'!**/node_modules/**',
 	'!extensions/**/colorize-fixtures/**',
-	'!extensions/vscode-api-tests/testWorkspace/**',
-	'!extensions/vscode-api-tests/testWorkspace2/**',
 	'!extensions/**/*.test.ts',
 	'!extensions/html-language-features/server/lib/jquery.d.ts',
 	'!extensions/terminal-suggest/src/shell/zshBuiltinsCache.ts',

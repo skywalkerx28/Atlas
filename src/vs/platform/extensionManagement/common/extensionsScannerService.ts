@@ -106,6 +106,14 @@ interface IBuiltInExtensionControl {
 	[name: string]: 'marketplace' | 'disabled' | string;
 }
 
+const ATLAS_REMOVED_SYSTEM_EXTENSIONS = new Set([
+	'github',
+	'github-authentication',
+	'microsoft-authentication',
+	'simple-browser',
+	'tunnel-forwarding',
+]);
+
 export type SystemExtensionsScanOptions = {
 	readonly checkControlFile?: boolean;
 	readonly language?: string;
@@ -418,8 +426,9 @@ export abstract class AbstractExtensionsScannerService extends Disposable implem
 		const extensionsScannerInput = await this.createExtensionScannerInput(this.systemExtensionsLocation, false, ExtensionType.System, language, true, undefined, this.getProductVersion());
 		const extensionsScanner = extensionsScannerInput.devMode ? this.extensionsScanner : this.systemExtensionsCachedScanner;
 		const result = await extensionsScanner.scanExtensions(extensionsScannerInput);
-		this.logService.trace('Scanned system extensions:', result.length);
-		return result;
+		const filteredResult = this.environmentService.isBuilt ? result : result.filter(extension => !ATLAS_REMOVED_SYSTEM_EXTENSIONS.has(basename(extension.location).toLowerCase()));
+		this.logService.trace('Scanned system extensions:', filteredResult.length);
+		return filteredResult;
 	}
 
 	private async scanDevSystemExtensions(language: string | undefined, checkControlFile: boolean): Promise<IRelaxedScannedExtension[]> {

@@ -301,75 +301,90 @@ class NewChatWidget extends Disposable implements IHistoryNavigationWidget {
 	// --- Rendering ---
 
 	render(container: HTMLElement): void {
-		const wrapper = dom.append(container, dom.$('.sessions-chat-widget'));
+		try {
+			console.error('[new chat welcome] render:start');
+			const wrapper = dom.append(container, dom.$('.sessions-chat-widget'));
 
-		// Overflow widget DOM node at the top level so the suggest widget
-		// is not clipped by any overflow:hidden ancestor.
-		const editorOverflowWidgetsDomNode = dom.append(container, dom.$('.sessions-chat-editor-overflow.monaco-editor'));
-		this._register({ dispose: () => editorOverflowWidgetsDomNode.remove() });
+			// Overflow widget DOM node at the top level so the suggest widget
+			// is not clipped by any overflow:hidden ancestor.
+			const editorOverflowWidgetsDomNode = dom.append(container, dom.$('.sessions-chat-editor-overflow.monaco-editor'));
+			this._register({ dispose: () => editorOverflowWidgetsDomNode.remove() });
+			console.error('[new chat welcome] render:containers-ready');
 
-		const welcomeElement = dom.append(wrapper, dom.$('.chat-full-welcome'));
+			const welcomeElement = dom.append(wrapper, dom.$('.chat-full-welcome'));
 
-		// Watermark letterpress
-		const header = dom.append(welcomeElement, dom.$('.chat-full-welcome-header'));
-		dom.append(header, dom.$('.chat-full-welcome-letterpress'));
+			// Watermark letterpress
+			const header = dom.append(welcomeElement, dom.$('.chat-full-welcome-header'));
+			dom.append(header, dom.$('.chat-full-welcome-letterpress'));
 
-		// Option group pickers (above the input)
-		this._pickersContainer = dom.append(welcomeElement, dom.$('.chat-full-welcome-pickers-container'));
+			// Option group pickers (above the input)
+			this._pickersContainer = dom.append(welcomeElement, dom.$('.chat-full-welcome-pickers-container'));
 
-		// Input slot
-		this._inputSlot = dom.append(welcomeElement, dom.$('.chat-full-welcome-inputSlot'));
+			// Input slot
+			this._inputSlot = dom.append(welcomeElement, dom.$('.chat-full-welcome-inputSlot'));
 
-		// Input area inside the input slot
-		const inputArea = dom.$('.sessions-chat-input-area');
-		this._contextAttachments.registerDropTarget(wrapper);
-		this._contextAttachments.registerPasteHandler(inputArea);
+			// Input area inside the input slot
+			const inputArea = dom.$('.sessions-chat-input-area');
+			this._contextAttachments.registerDropTarget(wrapper);
+			this._contextAttachments.registerPasteHandler(inputArea);
+			console.error('[new chat welcome] render:input-ready');
 
-		// Attachments row (pills only) inside input area, above editor
-		const attachRow = dom.append(inputArea, dom.$('.sessions-chat-attach-row'));
-		const attachedContextContainer = dom.append(attachRow, dom.$('.sessions-chat-attached-context'));
-		this._contextAttachments.renderAttachedContext(attachedContextContainer);
+			// Attachments row (pills only) inside input area, above editor
+			const attachRow = dom.append(inputArea, dom.$('.sessions-chat-attach-row'));
+			const attachedContextContainer = dom.append(attachRow, dom.$('.sessions-chat-attached-context'));
+			this._contextAttachments.renderAttachedContext(attachedContextContainer);
 
-		this._createEditor(inputArea, editorOverflowWidgetsDomNode);
-		this._createBottomToolbar(inputArea);
-		this._inputSlot.appendChild(inputArea);
+			this._createEditor(inputArea, editorOverflowWidgetsDomNode);
+			this._createBottomToolbar(inputArea);
+			this._inputSlot.appendChild(inputArea);
+			console.error('[new chat welcome] render:editor-ready');
 
-		// Isolation mode and branch pickers (below the input, shown when Local target is selected)
-		const isolationContainer = dom.append(welcomeElement, dom.$('.chat-full-welcome-local-mode'));
-		this._isolationModePicker.render(isolationContainer);
-		this._permissionPicker.render(isolationContainer);
-		dom.append(isolationContainer, dom.$('.sessions-chat-local-mode-spacer'));
-		const branchContainer = dom.append(isolationContainer, dom.$('.sessions-chat-local-mode-right'));
-		this._branchPicker.render(branchContainer);
-		this._syncIndicator.render(branchContainer);
+			// Isolation mode and branch pickers (below the input, shown when Local target is selected)
+			const isolationContainer = dom.append(welcomeElement, dom.$('.chat-full-welcome-local-mode'));
+			this._isolationModePicker.render(isolationContainer);
+			this._permissionPicker.render(isolationContainer);
+			dom.append(isolationContainer, dom.$('.sessions-chat-local-mode-spacer'));
+			const branchContainer = dom.append(isolationContainer, dom.$('.sessions-chat-local-mode-right'));
+			this._branchPicker.render(branchContainer);
+			this._syncIndicator.render(branchContainer);
+			console.error('[new chat welcome] render:pickers-mounted');
 
-		// Set initial visibility based on default target and isolation mode
-		const isLocal = this._targetPicker.selectedTarget === AgentSessionProviders.Background;
-		this._updateIsolationPickerVisibility();
-		this._permissionPicker.setVisible(isLocal);
-		const isWorktree = this._isolationModePicker.isolationMode === 'worktree';
-		this._branchPicker.setVisible(isLocal && isWorktree);
-		this._syncIndicator.setVisible(isLocal && isWorktree);
+			// Set initial visibility based on default target and isolation mode
+			const isLocal = this._targetPicker.selectedTarget === AgentSessionProviders.Background;
+			this._updateIsolationPickerVisibility();
+			this._permissionPicker.setVisible(isLocal);
+			const isWorktree = this._isolationModePicker.isolationMode === 'worktree';
+			this._branchPicker.setVisible(isLocal && isWorktree);
+			this._syncIndicator.setVisible(isLocal && isWorktree);
 
-		// Render target buttons & extension pickers
-		this._renderOptionGroupPickers();
+			// Render target buttons & extension pickers
+			this._renderOptionGroupPickers();
+			console.error('[new chat welcome] render:option-groups-ready');
 
-		// Initialize model picker
-		this._initDefaultModel();
+			// Initialize model picker
+			this._initDefaultModel();
+			console.error('[new chat welcome] render:model-ready');
 
-		// Restore draft input state from storage
-		this._restoreState();
+			// Restore draft input state from storage
+			this._restoreState();
 
-		// Create initial session
-		this._createNewSession();
+			// Create initial session
+			this._createNewSession();
+			console.error('[new chat welcome] render:session-created');
 
-		// Reveal
-		welcomeElement.classList.add('revealed');
+			// Reveal
+			welcomeElement.classList.add('revealed');
+			console.error('[new chat welcome] render:revealed');
 
-		// Layout editor after the input slot fade-in animation completes
-		this._register(dom.addDisposableListener(this._inputSlot, 'animationend', () => {
-			this._editor?.layout();
-		}, { once: true }));
+			// Layout editor after the input slot fade-in animation completes
+			this._register(dom.addDisposableListener(this._inputSlot, 'animationend', () => {
+				this._editor?.layout();
+			}, { once: true }));
+		} catch (error) {
+			console.error('[new chat welcome] render:failed', error);
+			this.logService.error('Failed to render new chat welcome view:', error);
+			throw error;
+		}
 	}
 
 	private async _createNewSession(): Promise<void> {

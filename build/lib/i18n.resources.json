@@ -223,10 +223,6 @@
 			"project": "vscode-workbench"
 		},
 		{
-			"name": "vs/workbench/contrib/surveys",
-			"project": "vscode-workbench"
-		},
-		{
 			"name": "vs/workbench/contrib/tasks",
 			"project": "vscode-workbench"
 		},
@@ -336,10 +332,6 @@
 		},
 		{
 			"name": "vs/workbench/contrib/scrollLocking",
-			"project": "vscode-workbench"
-		},
-		{
-			"name": "vs/workbench/contrib/remoteTunnel",
 			"project": "vscode-workbench"
 		},
 		{

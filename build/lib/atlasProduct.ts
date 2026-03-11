@@ -11,8 +11,15 @@ export const ATLAS_REMOVED_EXTENSIONS = new Set([
 	'github',
 	'github-authentication',
 	'microsoft-authentication',
+	'grunt',
+	'gulp',
+	'jake',
 	'simple-browser',
 	'tunnel-forwarding',
+	'vscode-api-tests',
+	'vscode-colorize-perf-tests',
+	'vscode-colorize-tests',
+	'vscode-test-resolver',
 ]);
 
 export function isAtlasRemovedExtensionName(name: string): boolean {

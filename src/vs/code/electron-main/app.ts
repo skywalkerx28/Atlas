@@ -16,7 +16,7 @@ import { getPathLabel } from '../../base/common/labels.js';
 import { Disposable, DisposableStore } from '../../base/common/lifecycle.js';
 import { Schemas, VSCODE_AUTHORITY } from '../../base/common/network.js';
 import { join, posix } from '../../base/common/path.js';
-import { INodeProcess, IProcessEnvironment, isLinux, isLinuxSnap, isMacintosh, isWindows, OS } from '../../base/common/platform.js';
+import { INodeProcess, IProcessEnvironment, isLinux, isMacintosh, isWindows, OS } from '../../base/common/platform.js';
 import { assertType } from '../../base/common/types.js';
 import { URI } from '../../base/common/uri.js';
 import { generateUuid } from '../../base/common/uuid.js';
@@ -81,10 +81,7 @@ import { ITelemetryServiceConfig, TelemetryService } from '../../platform/teleme
 import { getPiiPathsFromEnvironment, getTelemetryLevel, isInternalTelemetry, NullTelemetryService, supportsTelemetry } from '../../platform/telemetry/common/telemetryUtils.js';
 import { IUpdateService } from '../../platform/update/common/update.js';
 import { UpdateChannel } from '../../platform/update/common/updateIpc.js';
-import { DarwinUpdateService } from '../../platform/update/electron-main/updateService.darwin.js';
-import { LinuxUpdateService } from '../../platform/update/electron-main/updateService.linux.js';
-import { SnapUpdateService } from '../../platform/update/electron-main/updateService.snap.js';
-import { Win32UpdateService } from '../../platform/update/electron-main/updateService.win32.js';
+import { DisabledUpdateService } from '../../platform/update/electron-main/updateService.disabled.js';
 import { IOpenURLOptions, IURLService } from '../../platform/url/common/url.js';
 import { URLHandlerChannelClient, URLHandlerRouter } from '../../platform/url/common/urlIpc.js';
 import { NativeURLService } from '../../platform/url/common/urlService.js';
@@ -92,7 +89,7 @@ import { ElectronURLListener } from '../../platform/url/electron-main/electronUr
 import { IWebviewManagerService } from '../../platform/webview/common/webviewManagerService.js';
 import { WebviewMainService } from '../../platform/webview/electron-main/webviewMainService.js';
 import { isFolderToOpen, isWorkspaceToOpen, IWindowOpenable } from '../../platform/window/common/window.js';
-import { getAllWindowsExcludingOffscreen, IWindowsMainService, OpenContext } from '../../platform/windows/electron-main/windows.js';
+import { getAllWindowsExcludingOffscreen, IOpenConfiguration, IWindowsMainService, OpenContext } from '../../platform/windows/electron-main/windows.js';
 import { ICodeWindow } from '../../platform/window/electron-main/window.js';
 import { WindowsMainService } from '../../platform/windows/electron-main/windowsMainService.js';
 import { ActiveWindowManager } from '../../platform/windows/node/windowTracker.js';
@@ -1021,24 +1018,8 @@ export class CodeApplication extends Disposable {
 	private async initServices(machineId: string, sqmId: string, devDeviceId: string, sharedProcessReady: Promise<MessagePortClient>): Promise<IInstantiationService> {
 		const services = new ServiceCollection();
 
-		// Update
-		switch (process.platform) {
-			case 'win32':
-				services.set(IUpdateService, new SyncDescriptor(Win32UpdateService));
-				break;
-
-			case 'linux':
-				if (isLinuxSnap) {
-					services.set(IUpdateService, new SyncDescriptor(SnapUpdateService, [process.env['SNAP'], process.env['SNAP_REVISION']]));
-				} else {
-					services.set(IUpdateService, new SyncDescriptor(LinuxUpdateService));
-				}
-				break;
-
-			case 'darwin':
-				services.set(IUpdateService, new SyncDescriptor(DarwinUpdateService));
-				break;
-		}
+		// Atlas does not use the upstream VS Code update backends.
+		services.set(IUpdateService, new SyncDescriptor(DisabledUpdateService));
 
 		// Windows
 		services.set(IWindowsMainService, new SyncDescriptor(WindowsMainService, [machineId, sqmId, devDeviceId, this.userEnv], false));
@@ -1313,6 +1294,14 @@ export class CodeApplication extends Disposable {
 
 		const context = isLaunchedFromCli(process.env) ? OpenContext.CLI : OpenContext.DESKTOP;
 		const args = this.environmentMainService.args;
+		const openWithEmptyFallback = async (openConfig: IOpenConfiguration): Promise<ICodeWindow[]> => {
+			const windows = await windowsMainService.open(openConfig);
+			if (windows.length > 0) {
+				return windows;
+			}
+
+			return windowsMainService.openEmptyWindow({ context: openConfig.context, contextWindowId: openConfig.contextWindowId });
+		};
 
 		// Handle sessions window first based on context
 		if ((process as INodeProcess).isEmbeddedApp || (args['sessions'] && this.productService.quality !== 'stable')) {
@@ -1324,7 +1313,7 @@ export class CodeApplication extends Disposable {
 
 			// Openables can open as windows directly
 			if (initialProtocolUrls.openables.length > 0) {
-				return windowsMainService.open({
+				return openWithEmptyFallback({
 					context,
 					cli: args,
 					urisToOpen: initialProtocolUrls.openables,
@@ -1354,7 +1343,7 @@ export class CodeApplication extends Disposable {
 						protocolUrl.originalUrl = protocolUrl.uri.toString(true);
 						protocolUrl.uri = protocolUrl.uri.with({ query: params.toString() });
 
-						return windowsMainService.open({
+						return openWithEmptyFallback({
 							context,
 							cli: args,
 							forceNewWindow: true,
@@ -1383,7 +1372,7 @@ export class CodeApplication extends Disposable {
 
 			// Force new window
 			if (args['new-window'] || forceProfile || forceTempProfile) {
-				return windowsMainService.open({
+				return openWithEmptyFallback({
 					context,
 					cli: args,
 					forceNewWindow: true,
@@ -1399,7 +1388,7 @@ export class CodeApplication extends Disposable {
 
 			// mac: open-file event received on startup
 			if (macOpenFiles.length) {
-				return windowsMainService.open({
+				return openWithEmptyFallback({
 					context: OpenContext.DOCK,
 					cli: args,
 					urisToOpen: macOpenFiles.map(path => {
@@ -1416,7 +1405,7 @@ export class CodeApplication extends Disposable {
 		}
 
 		// default: read paths from cli
-		return windowsMainService.open({
+		return openWithEmptyFallback({
 			context,
 			cli: args,
 			forceNewWindow: args['new-window'],

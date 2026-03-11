@@ -283,12 +283,7 @@ export class WebClientServer {
 			return host;
 		};
 
-		const useTestResolver = (!this._environmentService.isBuilt && this._environmentService.args['use-test-resolver']);
-		let remoteAuthority = (
-			useTestResolver
-				? 'test+test'
-				: (getFirstHeader('x-original-host') || getFirstHeader('x-forwarded-host') || req.headers.host)
-		);
+		let remoteAuthority = getFirstHeader('x-original-host') || getFirstHeader('x-forwarded-host') || req.headers.host;
 		if (!remoteAuthority) {
 			return serveError(req, res, 400, `Bad request.`);
 		}
@@ -399,15 +394,6 @@ export class WebClientServer {
 			values['WORKBENCH_DEV_CSS_MODULES'] = JSON.stringify(cssModules);
 		}
 
-		if (useTestResolver) {
-			const bundledExtensions: { extensionPath: string; packageJSON: IExtensionManifest }[] = [];
-			for (const extensionPath of ['vscode-test-resolver', 'github-authentication']) {
-				const packageJSON = JSON.parse((await promises.readFile(FileAccess.asFileUri(`${builtinExtensionsPath}/${extensionPath}/package.json`).fsPath)).toString());
-				bundledExtensions.push({ extensionPath, packageJSON });
-			}
-			values['WORKBENCH_BUILTIN_EXTENSIONS'] = asJSON(bundledExtensions);
-		}
-
 		let data;
 		try {
 			const workbenchTemplate = (await promises.readFile(filePath)).toString();
@@ -423,7 +409,7 @@ export class WebClientServer {
 			'default-src \'self\';',
 			'img-src \'self\' https: data: blob:;',
 			'media-src \'self\';',
-			`script-src 'self' 'unsafe-eval' ${WORKBENCH_NLS_BASE_URL ?? ''} blob: 'nonce-1nline-m4p' ${this._getScriptCspHashes(data).join(' ')} '${webWorkerExtensionHostIframeScriptSHA}' 'sha256-/r7rqQ+yrxt57sxLuQ6AMYcy/lUpvAIzHjIJt/OeLWU=' ${useTestResolver ? '' : `http://${remoteAuthority}`};`,  // the sha is the same as in src/vs/workbench/services/extensions/worker/webWorkerExtensionHostIframe.html
+			`script-src 'self' 'unsafe-eval' ${WORKBENCH_NLS_BASE_URL ?? ''} blob: 'nonce-1nline-m4p' ${this._getScriptCspHashes(data).join(' ')} '${webWorkerExtensionHostIframeScriptSHA}' 'sha256-/r7rqQ+yrxt57sxLuQ6AMYcy/lUpvAIzHjIJt/OeLWU=' http://${remoteAuthority};`,  // the sha is the same as in src/vs/workbench/services/extensions/worker/webWorkerExtensionHostIframe.html
 			'child-src \'self\';',
 			`frame-src 'self' https://*.vscode-cdn.net data:;`,
 			'worker-src \'self\' data: blob:;',

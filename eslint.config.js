@@ -302,7 +302,6 @@ export default tseslint.config(
 			'src/vs/workbench/contrib/notebook/browser/viewParts/notebookKernelView.ts',
 			'src/vs/workbench/contrib/output/browser/outputView.ts',
 			'src/vs/workbench/contrib/preferences/browser/settingsTree.ts',
-			'src/vs/workbench/contrib/remoteTunnel/electron-browser/remoteTunnel.contribution.ts',
 			'src/vs/workbench/contrib/testing/browser/explorerProjections/listProjection.ts',
 			'src/vs/workbench/contrib/testing/browser/explorerProjections/treeProjection.ts',
 			'src/vs/workbench/contrib/testing/browser/testCoverageBars.ts',
@@ -459,7 +458,6 @@ export default tseslint.config(
 			'src/vs/platform/remote/common/remoteAuthorityResolver.ts',
 			'src/vs/platform/remote/electron-browser/electronRemoteResourceLoader.ts',
 			'src/vs/platform/remote/electron-browser/remoteAuthorityResolverService.ts',
-			'src/vs/platform/remoteTunnel/node/remoteTunnelService.ts',
 			'src/vs/platform/request/common/request.ts',
 			'src/vs/platform/request/common/requestIpc.ts',
 			'src/vs/platform/request/electron-utility/requestService.ts',
@@ -1488,7 +1486,6 @@ export default tseslint.config(
 						'readline',
 						'stream',
 						'string_decoder',
-						'tas-client',
 						'tls',
 						'undici',
 						'undici-types',
@@ -1577,9 +1574,6 @@ export default tseslint.config(
 						'vs/base/~',
 						'vs/base/parts/*/~',
 						'vs/platform/*/~',
-						'tas-client', // node module allowed even in /common/
-						'@microsoft/1ds-core-js', // node module allowed even in /common/
-						'@microsoft/1ds-post-js', // node module allowed even in /common/
 						'@xterm/headless' // node module allowed even in /common/
 					]
 				},
@@ -1695,7 +1689,6 @@ export default tseslint.config(
 							'when': 'test',
 							'pattern': 'vs/workbench/contrib/*/~'
 						}, // TODO@layers
-						'tas-client', // node module allowed even in /common/
 						'vscode-textmate', // node module allowed even in /common/
 						'@vscode/vscode-languagedetection', // node module allowed even in /common/
 						'@vscode/tree-sitter-wasm', // type import
@@ -2088,7 +2081,6 @@ export default tseslint.config(
 							'when': 'test',
 							'pattern': 'vs/workbench/contrib/*/~'
 						}, // TODO@layers
-						'tas-client', // node module allowed even in /common/
 						'vscode-textmate', // node module allowed even in /common/
 						'@vscode/vscode-languagedetection', // node module allowed even in /common/
 						'@vscode/tree-sitter-wasm', // type import
@@ -2289,7 +2281,6 @@ export default tseslint.config(
 			'extensions/mermaid-chat-features/chat-webview-src/**/*.ts',
 			'extensions/mermaid-chat-features/src/**/*.ts',
 			'extensions/media-preview/src/**/*.ts',
-			'extensions/simple-browser/**/*.ts',
 			'extensions/typescript-language-features/**/*.ts',
 		],
 		languageOptions: {
@@ -2303,10 +2294,6 @@ export default tseslint.config(
 
 					// Media preview
 					'extensions/media-preview/tsconfig.json',
-
-					// Media preview
-					'extensions/simple-browser/tsconfig.json',
-					'extensions/simple-browser/preview-src/tsconfig.json',
 
 					// Mermaid chat features
 					'extensions/mermaid-chat-features/tsconfig.json',

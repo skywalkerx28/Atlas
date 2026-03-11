@@ -39,7 +39,7 @@ This feature disables critical security protections and makes it much easier for
 			<string id="ChatToolsTerminalEnableAutoApprove">ChatToolsTerminalEnableAutoApprove</string>
 			<string id="ChatToolsTerminalEnableAutoApprove_autoApproveMode_description">Controls whether to allow auto approval in the run in terminal tool.</string>
 			<string id="EnableFeedback">EnableFeedback</string>
-			<string id="EnableFeedback_telemetry_feedback_enabled">Enable feedback mechanisms such as the issue reporter, surveys, and other feedback options.</string>
+			<string id="EnableFeedback_telemetry_feedback_enabled">Enable feedback mechanisms such as the issue reporter and other feedback options.</string>
 			<string id="TelemetryLevel">TelemetryLevel</string>
 			<string id="TelemetryLevel_telemetry_telemetryLevel_policyDescription">Controls the level of telemetry.</string>
 			<string id="TelemetryLevel_telemetry_telemetryLevel_default">Sends usage data, errors, and crash reports.</string>

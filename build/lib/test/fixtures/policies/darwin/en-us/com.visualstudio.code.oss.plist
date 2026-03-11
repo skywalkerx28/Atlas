@@ -219,7 +219,7 @@ This feature disables critical security protections and makes it much easier for
 <key>pfm_default</key>
 <false/>
 <key>pfm_description</key>
-<string>Enable feedback mechanisms such as the issue reporter, surveys, and other feedback options.</string>
+<string>Enable feedback mechanisms such as the issue reporter and other feedback options.</string>
 <key>pfm_name</key>
 <string>EnableFeedback</string>
 <key>pfm_title</key>

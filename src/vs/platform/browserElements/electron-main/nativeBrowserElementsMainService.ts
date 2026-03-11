@@ -159,8 +159,7 @@ export class NativeBrowserElementsMainService extends Disposable implements INat
 				try {
 					const url = new URL(targetInfo.url);
 					const isLiveServer = extensionId === 'ms-vscode.live-server' && url.searchParams.get('serverWindowId') === locator.webviewId;
-					const isSimpleBrowser = extensionId === 'vscode.simple-browser' && url.searchParams.get('id') === locator.webviewId && url.searchParams.has('vscodeBrowserReqId');
-					if (isLiveServer || isSimpleBrowser) {
+					if (isLiveServer) {
 						return true;
 					}
 					return false;

@@ -295,7 +295,7 @@
             "localization": {
                 "description": {
                     "key": "telemetry.feedback.enabled",
-                    "value": "Enable feedback mechanisms such as the issue reporter, surveys, and other feedback options."
+                    "value": "Enable feedback mechanisms such as the issue reporter and other feedback options."
                 }
             },
             "type": "boolean",

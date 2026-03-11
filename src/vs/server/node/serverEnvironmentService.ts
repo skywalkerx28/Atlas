@@ -56,7 +56,6 @@ export const serverOptions: OptionDescriptions<Required<ServerParsedArgs>> = {
 
 	'enable-sync': { type: 'boolean' },
 	'github-auth': { type: 'string' },
-	'use-test-resolver': { type: 'boolean' },
 
 	/* ----- extension management ----- */
 
@@ -186,7 +185,6 @@ export interface ServerParsedArgs {
 
 	'enable-sync'?: boolean;
 	'github-auth'?: string;
-	'use-test-resolver'?: boolean;
 
 	/* ----- extension management ----- */
 

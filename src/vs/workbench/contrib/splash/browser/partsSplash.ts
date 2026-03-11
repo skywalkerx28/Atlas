@@ -42,7 +42,13 @@ export class PartsSplash {
 		@IEditorGroupsService editorGroupsService: IEditorGroupsService,
 		@ILifecycleService lifecycleService: ILifecycleService,
 	) {
+		const splashRemovalFallback = mainWindow.setTimeout(() => {
+			this._removePartsSplash();
+			perf.mark('code/didRemovePartsSplashFallback');
+		}, this._environmentService.isBuilt ? 15000 : 5000);
+
 		Event.once(_layoutService.onDidLayoutMainContainer)(() => {
+			clearTimeout(splashRemovalFallback);
 			this._removePartsSplash();
 			perf.mark('code/didRemovePartsSplash');
 		}, undefined, this._disposables);

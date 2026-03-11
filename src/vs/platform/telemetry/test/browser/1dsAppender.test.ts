@@ -2,11 +2,10 @@
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
-import type { ITelemetryItem, ITelemetryUnloadState } from '@microsoft/1ds-core-js';
 import assert from 'assert';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../base/test/common/utils.js';
 import { OneDataSystemWebAppender } from '../../browser/1dsAppender.js';
-import { IAppInsightsCore } from '../../common/1dsAppender.js';
+import { IAppInsightsCore, ITelemetryItem, ITelemetryUnloadState } from '../../common/1dsAppender.js';
 
 class AppInsightsCoreMock implements IAppInsightsCore {
 	pluginVersionString: string = 'Test Runner';

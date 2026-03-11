@@ -35,6 +35,8 @@ interface ProductDescription {
 
 interface RemoteParsedArgs extends NativeParsedArgs { 'gitCredential'?: string; 'openExternal'?: boolean }
 
+type RemoteCliParsedArgs = Omit<Required<RemoteParsedArgs>, 'tunnel'>;
+
 
 const isSupportedForCmd = (optionId: keyof RemoteParsedArgs) => {
 	switch (optionId) {
@@ -96,10 +98,10 @@ export async function main(desc: ProductDescription, args: string[]): Promise<vo
 	}
 
 	// take the local options and remove the ones that don't apply
-	const options: OptionDescriptions<Required<RemoteParsedArgs>> = { ...OPTIONS, gitCredential: { type: 'string' }, openExternal: { type: 'boolean' } };
+	const options: OptionDescriptions<RemoteCliParsedArgs> = { ...OPTIONS, gitCredential: { type: 'string' }, openExternal: { type: 'boolean' } };
 	const isSupported = cliCommand ? isSupportedForCmd : isSupportedForPipe;
 	for (const optionId in OPTIONS) {
-		const optId = <keyof RemoteParsedArgs>optionId;
+		const optId = optionId as keyof RemoteCliParsedArgs;
 		if (!isSupported(optId)) {
 			delete options[optId];
 		}
@@ -232,8 +234,8 @@ export async function main(desc: ProductDescription, args: string[]): Promise<vo
 			const cmdLine: string[] = [];
 			parsedArgs['install-extension']?.forEach(id => cmdLine.push('--install-extension', id));
 			parsedArgs['uninstall-extension']?.forEach(id => cmdLine.push('--uninstall-extension', id));
-			['list-extensions', 'force', 'show-versions', 'category'].forEach(opt => {
-				const value = parsedArgs[<keyof NativeParsedArgs>opt];
+			(['list-extensions', 'force', 'show-versions', 'category'] as const).forEach(opt => {
+				const value = parsedArgs[opt];
 				if (value !== undefined) {
 					cmdLine.push(`--${opt}=${value}`);
 				}

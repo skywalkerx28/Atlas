@@ -410,10 +410,6 @@ const nativeExtensions = [
 ];
 
 const excludedExtensions = [
-	'vscode-api-tests',
-	'vscode-colorize-tests',
-	'vscode-colorize-perf-tests',
-	'vscode-test-resolver',
 	'ms-vscode.node-debug',
 	'ms-vscode.node-debug2',
 ];
@@ -762,7 +758,6 @@ const esbuildMediaScripts = [
 	'markdown-math/esbuild.notebook.mts',
 	'mermaid-chat-features/esbuild.webview.mts',
 	'notebook-renderers/esbuild.notebook.mts',
-	'simple-browser/esbuild.webview.mts',
 ].filter(script => !isAtlasRemovedExtensionPath(`extensions/${script}`));
 
 export function buildExtensionMedia(isWatch: boolean, outputRoot?: string): Promise<void> {

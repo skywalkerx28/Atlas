@@ -80,7 +80,6 @@ import '../workbench/services/tunnel/electron-browser/tunnelService.js';
 import '../platform/diagnostics/electron-browser/diagnosticsService.js';
 import '../platform/profiling/electron-browser/profilingService.js';
 import '../platform/telemetry/electron-browser/customEndpointTelemetryService.js';
-import '../platform/remoteTunnel/electron-browser/remoteTunnelService.js';
 import '../workbench/services/files/electron-browser/elevatedFileService.js';
 import '../workbench/services/search/electron-browser/searchService.js';
 import '../workbench/services/workingCopy/electron-browser/workingCopyHistoryService.js';
@@ -143,8 +142,7 @@ import '../workbench/services/themes/electron-browser/themes.contribution.js';
 import '../workbench/contrib/userDataSync/electron-browser/userDataSync.contribution.js';
 
 // Tags
-import '../workbench/contrib/tags/electron-browser/workspaceTagsService.js';
-import '../workbench/contrib/tags/electron-browser/tags.contribution.js';
+import '../workbench/contrib/tags/browser/workspaceTagsService.js';
 // Performance
 import '../workbench/contrib/performance/electron-browser/performance.contribution.js';
 

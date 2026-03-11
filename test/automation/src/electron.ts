@@ -3,11 +3,8 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { join } from 'path';
 import * as fs from 'fs';
-import { copyExtension } from './extensions';
-import { URI } from 'vscode-uri';
-import { measureAndLog } from './logger';
+import { join } from 'path';
 import type { LaunchOptions } from './code';
 
 const root = join(__dirname, '..', '..', '..');
@@ -19,7 +16,7 @@ export interface IElectronConfiguration {
 }
 
 export async function resolveElectronConfiguration(options: LaunchOptions): Promise<IElectronConfiguration> {
-	const { codePath, workspacePath, extensionsPath, userDataDir, remote, logger, logsPath, crashesPath, extraArgs } = options;
+	const { codePath, workspacePath, extensionsPath, userDataDir, remote, logsPath, crashesPath, extraArgs } = options;
 	const env = { ...process.env };
 
 	const args: string[] = [
@@ -29,7 +26,6 @@ export async function resolveElectronConfiguration(options: LaunchOptions): Prom
 		'--disable-experiments',
 		'--no-cached-data',
 		'--disable-updates',
-		'--disable-extension=vscode.vscode-api-tests',
 		`--crash-reporter-directory=${crashesPath}`,
 		'--disable-workspace-trust',
 		`--logsPath=${logsPath}`
@@ -57,29 +53,7 @@ export async function resolveElectronConfiguration(options: LaunchOptions): Prom
 	}
 
 	if (remote) {
-		if (!workspacePath) {
-			throw new Error('Workspace path is required when running remote');
-		}
-		// Replace workspace path with URI
-		args[0] = `--${workspacePath.endsWith('.code-workspace') ? 'file' : 'folder'}-uri=vscode-remote://test+test/${URI.file(workspacePath).path}`;
-
-		if (codePath) {
-			if (!extensionsPath) {
-				throw new Error('Extensions path is required when running against a build at the moment.');
-			}
-			// running against a build: copy the test resolver extension
-			await measureAndLog(() => copyExtension(root, extensionsPath, 'vscode-test-resolver'), 'copyExtension(vscode-test-resolver)', logger);
-		}
-		args.push('--enable-proposed-api=vscode.vscode-test-resolver');
-		if (userDataDir) {
-			const remoteDataDir = `${userDataDir}-server`;
-			fs.mkdirSync(remoteDataDir, { recursive: true });
-			env['TESTRESOLVER_DATA_FOLDER'] = remoteDataDir;
-		}
-		env['TESTRESOLVER_LOGS_FOLDER'] = join(logsPath, 'server');
-		if (options.verbose) {
-			env['TESTRESOLVER_LOG_LEVEL'] = 'trace';
-		}
+		throw new Error('Remote smoke and integration automation has been disabled in Atlas.');
 	}
 
 	if (!codePath) {

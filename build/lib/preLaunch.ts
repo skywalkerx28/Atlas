@@ -37,15 +37,62 @@ async function getElectron() {
 }
 
 async function ensureCompiled() {
-	if (!(await exists('out'))) {
+	const requiredOutputs = [
+		'out/main.js',
+		'extensions/git/out/main.js'
+	];
+
+	if (!(await exists('out')) || !(await Promise.all(requiredOutputs.map(exists))).every(Boolean)) {
 		await runProcess(npm, ['run', 'compile']);
 	}
+}
+
+async function ensureDarwinDirectLaunchBundle() {
+	if (process.platform !== 'darwin') {
+		return;
+	}
+
+	const product = JSON.parse(await fs.readFile(path.join(rootDir, 'product.json'), 'utf8')) as { nameLong: string };
+	const resourcesDir = path.join(rootDir, '.build', 'electron', `${product.nameLong}.app`, 'Contents', 'Resources');
+	const appPath = path.join(resourcesDir, 'app');
+	const repoRelativePath = path.relative(appPath, rootDir) || '.';
+	const bootstrapPath = path.join(appPath, 'bootstrap.cjs');
+	const packageJsonPath = path.join(appPath, 'package.json');
+	const bootstrap = `'use strict';
+
+const path = require('path');
+const { pathToFileURL } = require('url');
+
+const repoRoot = path.resolve(__dirname, ${JSON.stringify(repoRelativePath)});
+process.chdir(repoRoot);
+process.env.NODE_ENV ??= 'development';
+process.env.VSCODE_DEV ??= '1';
+process.env.VSCODE_CLI ??= '1';
+process.env.ELECTRON_ENABLE_STACK_DUMPING ??= '1';
+process.env.ELECTRON_ENABLE_LOGGING ??= '1';
+
+if (process.argv.slice(1).every(arg => arg.startsWith('-'))) {
+	process.argv.splice(1, 0, '.');
+}
+
+void import(pathToFileURL(path.join(repoRoot, 'out', 'main.js')).href);
+`;
+
+	await fs.rm(appPath, { recursive: true, force: true });
+	await fs.mkdir(appPath, { recursive: true });
+	await fs.writeFile(packageJsonPath, JSON.stringify({
+		name: 'atlas-dev-launcher',
+		private: true,
+		main: './bootstrap.cjs'
+	}, null, '\t') + '\n');
+	await fs.writeFile(bootstrapPath, bootstrap);
 }
 
 async function main() {
 	await ensureNodeModules();
 	await getElectron();
 	await ensureCompiled();
+	await ensureDarwinDirectLaunchBundle();
 
 	// Can't require this until after dependencies are installed
 	const { getBuiltInExtensions } = await import('./builtInExtensions.ts');

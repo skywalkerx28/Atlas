@@ -27,9 +27,9 @@ class ExtensionReporter implements TelemetryReporter {
 	readonly #reporter: VSCodeTelemetryReporter;
 
 	constructor(
-		packageInfo: IPackageInfo
+		aiKey: string
 	) {
-		this.#reporter = new VSCodeTelemetryReporter(packageInfo.aiKey);
+		this.#reporter = new VSCodeTelemetryReporter(aiKey);
 	}
 	sendTelemetryEvent(eventName: string, properties?: {
 		[key: string]: string;
@@ -44,7 +44,10 @@ class ExtensionReporter implements TelemetryReporter {
 
 export function loadDefaultTelemetryReporter(): TelemetryReporter {
 	const packageInfo = getPackageInfo();
-	return packageInfo?.aiKey ? new ExtensionReporter(packageInfo) : nullReporter;
+	if (!packageInfo?.aiKey) {
+		return nullReporter;
+	}
+	return new ExtensionReporter(packageInfo.aiKey);
 }
 
 function getPackageInfo(): IPackageInfo | null {

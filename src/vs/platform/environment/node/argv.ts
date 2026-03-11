@@ -47,7 +47,9 @@ export type OptionDescriptions<T> = {
 
 export const NATIVE_CLI_COMMANDS = ['serve-web'] as const;
 
-export const OPTIONS: OptionDescriptions<Required<NativeParsedArgs>> = {
+type AtlasNativeParsedArgs = Omit<Required<NativeParsedArgs>, 'tunnel'>;
+
+export const OPTIONS: OptionDescriptions<AtlasNativeParsedArgs> = {
 	'chat': {
 		type: 'subcommand',
 		description: 'Pass in a prompt to run in a chat session in the current working directory.',

@@ -351,10 +351,6 @@ import '../workbench/contrib/themes/browser/themes.contribution.js';
 // Update
 import '../workbench/contrib/update/browser/update.contribution.js';
 
-// Surveys
-import '../workbench/contrib/surveys/browser/nps.contribution.js';
-import '../workbench/contrib/surveys/browser/languageSurveys.contribution.js';
-
 // Welcome
 // import '../workbench/contrib/welcomeGettingStarted/browser/gettingStarted.contribution.js';
 // import '../workbench/contrib/welcomeAgentSessions/browser/agentSessionsWelcome.contribution.js';

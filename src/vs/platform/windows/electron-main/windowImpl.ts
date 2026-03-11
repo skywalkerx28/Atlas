@@ -1220,6 +1220,24 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
 		const wasLoaded = this.wasLoaded;
 		this.wasLoaded = true;
 
+		// macOS direct app launches can restore a window into a different space or
+		// keep the initial shell visible even though the renderer finished loading.
+		// On the first load, explicitly reveal and focus the window once the
+		// workbench has finished navigating so the browser window becomes visible.
+		if (isMacintosh && !wasLoaded) {
+			this._register(Event.fromNodeEventEmitter(this._win.webContents, 'did-finish-load')(() => {
+				if (!this._win || this._win.isDestroyed()) {
+					return;
+				}
+
+				if (!this._win.isVisible()) {
+					this._win.show();
+				}
+
+				this.focus({ mode: FocusMode.Force });
+			}));
+		}
+
 		// Make window visible if it did not open in N seconds because this indicates an error
 		// Only do this when running out of sources and not when running tests
 		if (!this.environmentMainService.isBuilt && !this.environmentMainService.extensionTestsLocationURI) {

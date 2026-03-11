@@ -50,27 +50,9 @@ else
 fi
 
 echo
-echo "### API tests (folder)"
-echo
-"$INTEGRATION_TEST_ELECTRON_PATH" $ROOT/extensions/vscode-api-tests/testWorkspace --enable-proposed-api=vscode.vscode-api-tests --extensionDevelopmentPath=$ROOT/extensions/vscode-api-tests --extensionTestsPath=$ROOT/extensions/vscode-api-tests/out/singlefolder-tests $API_TESTS_EXTRA_ARGS
-kill_app
-
-echo
-echo "### API tests (workspace)"
-echo
-"$INTEGRATION_TEST_ELECTRON_PATH" $ROOT/extensions/vscode-api-tests/testworkspace.code-workspace --enable-proposed-api=vscode.vscode-api-tests --extensionDevelopmentPath=$ROOT/extensions/vscode-api-tests --extensionTestsPath=$ROOT/extensions/vscode-api-tests/out/workspace-tests $API_TESTS_EXTRA_ARGS
-kill_app
-
-echo
-echo "### Colorize tests"
-echo
-npm run test-extension -- -l vscode-colorize-tests
-kill_app
-
-echo
 echo "### Terminal Suggest tests"
 echo
-npm run test-extension -- -l terminal-suggest --enable-proposed-api=vscode.vscode-api-tests
+npm run test-extension -- -l terminal-suggest
 kill_app
 
 echo

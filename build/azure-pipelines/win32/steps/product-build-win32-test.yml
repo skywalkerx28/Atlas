@@ -47,10 +47,6 @@ steps:
         compile-extension-media `
         compile-extension:microsoft-authentication `
         compile-extension:typescript-language-features `
-        compile-extension:vscode-api-tests `
-        compile-extension:vscode-colorize-tests `
-        compile-extension:vscode-colorize-perf-tests `
-        compile-extension:vscode-test-resolver `
       }
     displayName: Build integration tests
 
@@ -98,22 +94,6 @@ steps:
       displayName: 🧪 Run integration tests (Browser, Firefox)
       timeoutInMinutes: 20
 
-  - ${{ if eq(parameters.VSCODE_RUN_REMOTE_TESTS, true) }}:
-    - powershell: |
-        . build/azure-pipelines/win32/exec.ps1
-        $ErrorActionPreference = "Stop"
-        $AppRoot = "$(agent.builddirectory)\test\VSCode-win32-$(VSCODE_ARCH)"
-        $ProductJsonPath = (Get-ChildItem -Path "$AppRoot" -Name "product.json" -Recurse | Select-Object -First 1)
-        $AppProductJson = Get-Content -Raw -Path "$AppRoot\$ProductJsonPath" | ConvertFrom-Json
-        $AppNameShort = $AppProductJson.nameShort
-        $env:INTEGRATION_TEST_ELECTRON_PATH = "$AppRoot\$AppNameShort.exe"
-        $env:VSCODE_REMOTE_SERVER_PATH = "$(agent.builddirectory)\test\vscode-server-win32-$(VSCODE_ARCH)"
-        exec { .\scripts\test-remote-integration.bat }
-      env:
-        VSCODE_SKIP_PRELAUNCH: '1'
-      displayName: 🧪 Run integration tests (Remote)
-      timeoutInMinutes: 20
-
   - powershell: .\build\azure-pipelines\win32\listprocesses.bat
     displayName: Diagnostics after integration test runs
     continueOnError: true
@@ -134,13 +114,6 @@ steps:
       env:
         VSCODE_REMOTE_SERVER_PATH: $(agent.builddirectory)\test\vscode-server-win32-$(VSCODE_ARCH)-web
       displayName: 🧪 Run smoke tests (Browser, Chromium)
-      timeoutInMinutes: 20
-
-  - ${{ if eq(parameters.VSCODE_RUN_REMOTE_TESTS, true) }}:
-    - powershell: npm run smoketest-no-compile -- --tracing --remote --build "$(agent.builddirectory)\test\VSCode-win32-$(VSCODE_ARCH)"
-      env:
-        VSCODE_REMOTE_SERVER_PATH: $(agent.builddirectory)\test\vscode-server-win32-$(VSCODE_ARCH)
-      displayName: 🧪 Run smoke tests (Remote)
       timeoutInMinutes: 20
 
   - powershell: .\build\azure-pipelines\win32\listprocesses.bat

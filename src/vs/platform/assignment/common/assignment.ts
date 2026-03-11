@@ -5,7 +5,11 @@
 
 import { Event } from '../../../base/common/event.js';
 import * as platform from '../../../base/common/platform.js';
-import type { IExperimentationFilterProvider } from 'tas-client';
+
+export interface IExperimentationFilterProvider {
+	getFilterValue(filter: string): string | null;
+	getFilters(): Map<string, unknown>;
+}
 
 export const ASSIGNMENT_STORAGE_KEY = 'VSCode.ABExp.FeatureData';
 export const ASSIGNMENT_REFETCH_INTERVAL = 60 * 60 * 1000; // 1 hour
@@ -113,9 +117,8 @@ export class AssignmentFilterProvider implements IExperimentationFilterProvider 
 	) { }
 
 	/**
-	 * Returns a version string that can be parsed by the TAS client.
-	 * The tas client cannot handle suffixes lke "-insider"
-	 * Ref: https://github.com/microsoft/tas-client/blob/30340d5e1da37c2789049fcf45928b954680606f/vscode-tas-client/src/vscode-tas-client/VSCodeFilterProvider.ts#L35
+	 * Returns a version string that legacy experiment consumers can parse.
+	 * Historically these clients could not handle suffixes like "-insider".
 	 *
 	 * @param version Version string to be trimmed.
 	*/

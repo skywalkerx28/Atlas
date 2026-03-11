@@ -332,12 +332,12 @@ configurationRegistry.registerConfiguration({
 		'telemetry.feedback.enabled': {
 			type: 'boolean',
 			default: true,
-			description: localize('telemetry.feedback.enabled', "Enable feedback mechanisms such as the issue reporter, surveys, and other feedback options."),
+			description: localize('telemetry.feedback.enabled', "Enable feedback mechanisms such as the issue reporter and other feedback options."),
 			policy: {
 				name: 'EnableFeedback',
 				category: PolicyCategory.Telemetry,
 				minimumVersion: '1.99',
-				localization: { description: { key: 'telemetry.feedback.enabled', value: localize('telemetry.feedback.enabled', "Enable feedback mechanisms such as the issue reporter, surveys, and other feedback options.") } },
+				localization: { description: { key: 'telemetry.feedback.enabled', value: localize('telemetry.feedback.enabled', "Enable feedback mechanisms such as the issue reporter and other feedback options.") } },
 			}
 		},
 		// Deprecated telemetry setting
