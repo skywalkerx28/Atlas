@@ -50,8 +50,8 @@
 
 ### Atlas vs daemon contract mismatches
 
-- None new in this hardening pass beyond the already-documented Wave B constraint: the current daemon still exposes only fleet plus handshake/ping methods as public JSON-RPC surface.
-- The remaining meaningful coverage gap is blocked on Agent 2 Phase `1b` shipping richer public daemon read families; until those methods exist, Atlas should keep those observables empty/default and fail closed on writes.
+- Atlas hardening stayed intentionally narrow around the shipped bridge surface even though the current daemon now exposes additional public read families: `health.*`, `objective.*`, `review.*`, `merge.*`, and `task.get`.
+- The remaining meaningful Atlas coverage gap is now bridge adoption, not daemon availability: until Atlas expands beyond fleet, those newer daemon-backed observables should stay empty/default and writes should remain fail closed.
 
 ## Phase 2 Wave B
 
@@ -89,6 +89,6 @@
 
 ### Atlas vs daemon contract mismatches
 
-- The current harness daemon branch still exposes only `initialize`, `shutdown`, `daemon.ping`, `fleet.snapshot`, `fleet.subscribe`, and `fleet.unsubscribe` as public JSON-RPC methods.
-- `streams.rs` already classifies future topics like `health`, `cost`, `review`, and `agent.activity:*`, but `session.rs` does not expose public subscribe/read methods for those families yet.
+- The current harness daemon branch now exposes `initialize`, `shutdown`, `daemon.ping`, `fleet.snapshot`, `fleet.subscribe`, `fleet.unsubscribe`, `health.get`, `health.subscribe`, `health.unsubscribe`, `objective.list`, `objective.get`, `objective.subscribe`, `objective.unsubscribe`, `review.list`, `review.get`, `review.subscribe`, `review.unsubscribe`, `merge.list`, `merge.get`, `merge.subscribe`, `merge.unsubscribe`, and `task.get` as public JSON-RPC methods.
+- Wave B in Atlas intentionally did not adopt those newer read families yet; it stayed limited to the fleet bridge surface plus handshake/ping tightening.
 - Atlas docs had older bridge wording that implied CLI/JSONL fallback behavior or broader observable population than the current merged daemon branch actually supports. The touched docs were aligned in this wave.
