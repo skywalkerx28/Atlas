@@ -10,7 +10,7 @@ import { env } from '../../../../base/common/process.js';
 import { constObservable, IObservable, observableValue } from '../../../../base/common/observable.js';
 import { isEqualOrParent } from '../../../../base/common/resources.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
-import { Disposable } from '../../../../base/common/lifecycle.js';
+import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.js';
 import { URI } from '../../../../base/common/uri.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
@@ -54,6 +54,7 @@ export class HarnessService extends Disposable implements IHarnessService {
 
 	private readonly _onDidDisconnect = this._register(new Emitter<void>());
 	readonly onDidDisconnect: Event<void> = this._onDidDisconnect.event;
+	private readonly connectionDisposables = this._register(new DisposableStore());
 
 	private daemonClient: HarnessDaemonClient | undefined;
 	private sqlitePoller: HarnessSqlitePoller | undefined;
@@ -234,15 +235,16 @@ export class HarnessService extends Disposable implements IHarnessService {
 		await this.ensureDaemonSocketPath(socketPath);
 		const token = await this.readDaemonClientToken();
 		const client = new HarnessDaemonClient(this.logService);
+		this.connectionDisposables.add(client);
 
-		client.onDidNotification(notification => {
+		this.connectionDisposables.add(client.onDidNotification(notification => {
 			void this.handleDaemonNotification(notification);
-		});
-		client.onDidDisconnect(error => {
+		}));
+		this.connectionDisposables.add(client.onDidDisconnect(error => {
 			if (!this.disconnectRequested && this.connectionState.get().mode === 'daemon') {
 				void this.handleUnexpectedDaemonDisconnect(error);
 			}
-		});
+		}));
 
 		try {
 			const initializeResult = await client.connect(socketPath, {
@@ -275,6 +277,7 @@ export class HarnessService extends Disposable implements IHarnessService {
 			try {
 				await client.shutdown();
 			} finally {
+				this.connectionDisposables.clear();
 				this.disconnectRequested = false;
 			}
 			throw error;
@@ -303,6 +306,7 @@ export class HarnessService extends Disposable implements IHarnessService {
 		});
 
 		this.sqlitePoller = poller;
+		this.connectionDisposables.add(poller);
 		this.fleetSnapshotState = await poller.start();
 		this.publishFleetState();
 		this.setConnectionState({
@@ -428,6 +432,7 @@ export class HarnessService extends Disposable implements IHarnessService {
 		if (daemonClient) {
 			await daemonClient.shutdown();
 		}
+		this.connectionDisposables.clear();
 
 		if (!silent) {
 			this._onDidDisconnect.fire();
