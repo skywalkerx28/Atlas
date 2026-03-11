@@ -65,7 +65,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Api> {
 
 	let experimentTelemetryReporter: IExperimentationTelemetryReporter | undefined;
 	const packageInfo = getPackageInfo(context);
-	if (packageInfo) {
+	if (packageInfo?.aiKey) {
 		const { aiKey } = packageInfo;
 		const vscTelemetryReporter = new VsCodeTelemetryReporter(aiKey);
 		experimentTelemetryReporter = new ExperimentationTelemetryReporter(vscTelemetryReporter);

@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { existsSync } from 'fs';
+import { isAtlasRemovedExtensionPath } from '../lib/atlasProduct.ts';
 
 /**
  * Complete list of directories where npm should be executed to install node modules
@@ -61,7 +62,7 @@ export const dirs = [
 	'.vscode/extensions/vscode-selfhost-import-aid',
 	'.vscode/extensions/vscode-selfhost-test-provider',
 	'.vscode/extensions/vscode-extras',
-];
+].filter(dir => !isAtlasRemovedExtensionPath(dir));
 
 if (existsSync(`${import.meta.dirname}/../../.build/distro/npm`)) {
 	dirs.push('.build/distro/npm');

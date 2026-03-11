@@ -15,10 +15,7 @@ import { NotificationPriority } from '../../../platform/notification/common/noti
 @extHostNamedCustomer(MainContext.MainThreadProgress)
 export class MainThreadProgress implements MainThreadProgressShape {
 
-	private static readonly URGENT_PROGRESS_SOURCES = [
-		'vscode.github-authentication',
-		'vscode.microsoft-authentication'
-	];
+	private static readonly URGENT_PROGRESS_SOURCES: string[] = [];
 
 	private readonly _progressService: IProgressService;
 	private _progress = new Map<number, { resolve: () => void; progress: IProgress<IProgressStep> }>();

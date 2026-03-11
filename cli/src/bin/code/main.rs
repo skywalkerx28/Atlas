@@ -102,27 +102,6 @@ async fn main() -> Result<(), std::convert::Infallible> {
 			Some(args::Commands::ServeWeb(sw_args)) => {
 				serve_web::serve_web(context!(), sw_args).await
 			}
-
-			Some(args::Commands::Tunnel(mut tunnel_args)) => match tunnel_args.subcommand.take() {
-				Some(args::TunnelSubcommand::Prune) => tunnels::prune(context!()).await,
-				Some(args::TunnelSubcommand::Unregister) => tunnels::unregister(context!()).await,
-				Some(args::TunnelSubcommand::Kill) => tunnels::kill(context!()).await,
-				Some(args::TunnelSubcommand::Restart) => tunnels::restart(context!()).await,
-				Some(args::TunnelSubcommand::Status) => tunnels::status(context!()).await,
-				Some(args::TunnelSubcommand::Rename(rename_args)) => {
-					tunnels::rename(context!(), rename_args).await
-				}
-				Some(args::TunnelSubcommand::User(user_command)) => {
-					tunnels::user(context!(), user_command).await
-				}
-				Some(args::TunnelSubcommand::Service(service_args)) => {
-					tunnels::service(context_no_logger(), tunnel_args, service_args).await
-				}
-				Some(args::TunnelSubcommand::ForwardInternal(forward_args)) => {
-					tunnels::forward(context_no_logger(), forward_args).await
-				}
-				None => tunnels::serve(context_no_logger(), tunnel_args.serve_args).await,
-			},
 		},
 	};
 

@@ -42,7 +42,7 @@ export function activate(
 
 	let experimentTelemetryReporter: IExperimentationTelemetryReporter | undefined;
 	const packageInfo = getPackageInfo(context);
-	if (packageInfo) {
+	if (packageInfo?.aiKey) {
 		const { name: id, version, aiKey } = packageInfo;
 		const vscTelemetryReporter = new VsCodeTelemetryReporter(aiKey);
 		experimentTelemetryReporter = new ExperimentationTelemetryReporter(vscTelemetryReporter);

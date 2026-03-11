@@ -23,6 +23,7 @@ import * as jsoncParser from 'jsonc-parser';
 import webpack from 'webpack';
 import { getProductionDependencies } from './dependencies.ts';
 import { type IExtensionDefinition, getExtensionStream } from './builtInExtensions.ts';
+import { isAtlasRemovedExtensionName, isAtlasRemovedExtensionPath } from './atlasProduct.ts';
 import { getVersion } from './getVersion.ts';
 import { fetchUrls, fetchGithub } from './fetch.ts';
 import { createTsgoStream, spawnTsgo } from './tsgo.ts';
@@ -33,7 +34,7 @@ const require = createRequire(import.meta.url);
 
 const root = path.dirname(path.dirname(import.meta.dirname));
 const commit = getVersion(root);
-const sourceMappingURLBase = `https://main.vscode-cdn.net/sourcemaps/${commit}`;
+const sourceMappingURLBase = `https://atlas-cdn.localhost/sourcemaps/${commit}`;
 
 function minifyExtensionResources(input: Stream): Stream {
 	const jsonFilter = filter(['**/*.json', '**/*.code-snippets'], { restore: true });
@@ -508,19 +509,20 @@ export function packageAllLocalExtensionsStream(forWeb: boolean, disableMangle: 
  */
 function doPackageLocalExtensionsStream(forWeb: boolean, disableMangle: boolean, native: boolean): Stream {
 	const nativeExtensionsSet = new Set(nativeExtensions);
-	const localExtensionsDescriptions = (
-		(glob.sync('extensions/*/package.json') as string[])
-			.map(manifestPath => {
-				const absoluteManifestPath = path.join(root, manifestPath);
-				const extensionPath = path.dirname(path.join(root, manifestPath));
-				const extensionName = path.basename(extensionPath);
-				return { name: extensionName, path: extensionPath, manifestPath: absoluteManifestPath };
-			})
-			.filter(({ name }) => native ? nativeExtensionsSet.has(name) : !nativeExtensionsSet.has(name))
-			.filter(({ name }) => excludedExtensions.indexOf(name) === -1)
-			.filter(({ name }) => builtInExtensions.every(b => b.name !== name))
-			.filter(({ manifestPath }) => (forWeb ? isWebExtension(require(manifestPath)) : true))
-	);
+		const localExtensionsDescriptions = (
+			(glob.sync('extensions/*/package.json') as string[])
+				.map(manifestPath => {
+					const absoluteManifestPath = path.join(root, manifestPath);
+					const extensionPath = path.dirname(path.join(root, manifestPath));
+					const extensionName = path.basename(extensionPath);
+					return { name: extensionName, path: extensionPath, manifestPath: absoluteManifestPath };
+				})
+				.filter(({ name }) => native ? nativeExtensionsSet.has(name) : !nativeExtensionsSet.has(name))
+				.filter(({ name }) => !isAtlasRemovedExtensionName(name))
+				.filter(({ name }) => excludedExtensions.indexOf(name) === -1)
+				.filter(({ name }) => builtInExtensions.every(b => b.name !== name))
+				.filter(({ manifestPath }) => (forWeb ? isWebExtension(require(manifestPath)) : true))
+		);
 	const localExtensionsStream = minifyExtensionResources(
 		es.merge(
 			...localExtensionsDescriptions.map(extension => {
@@ -758,7 +760,7 @@ const esbuildMediaScripts = [
 	'mermaid-chat-features/esbuild.webview.mts',
 	'notebook-renderers/esbuild.notebook.mts',
 	'simple-browser/esbuild.webview.mts',
-];
+].filter(script => !isAtlasRemovedExtensionPath(`extensions/${script}`));
 
 export function buildExtensionMedia(isWatch: boolean, outputRoot?: string): Promise<void> {
 	return esbuildExtensions('esbuilding extension media', isWatch, esbuildMediaScripts.map(p => ({

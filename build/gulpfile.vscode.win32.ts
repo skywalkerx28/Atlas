@@ -96,7 +96,7 @@ function buildWin32Setup(arch: string, target: string): task.CallbackTask {
 			AppMutex: product.win32MutexName,
 			TunnelMutex: product.win32TunnelMutex,
 			TunnelServiceMutex: product.win32TunnelServiceMutex,
-			TunnelApplicationName: product.tunnelApplicationName,
+			TunnelApplicationName: product.tunnelApplicationName ?? '',
 			ApplicationName: product.applicationName,
 			Arch: arch,
 			AppId: { 'x64': x64AppId, 'arm64': arm64AppId }[arch],

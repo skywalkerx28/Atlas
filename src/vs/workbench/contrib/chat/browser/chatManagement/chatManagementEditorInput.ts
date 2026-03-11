@@ -35,7 +35,7 @@ export class ChatManagementEditorInput extends EditorInput {
 	}
 
 	override getName(): string {
-		return nls.localize('aiManagementEditorInputName', "Manage Copilot");
+		return nls.localize('aiManagementEditorInputName', "Manage Atlas");
 	}
 
 	override getIcon(): ThemeIcon {

@@ -57,6 +57,7 @@ process.on('unhandledRejection', (reason, p) => {
 
 // Load all the gulpfiles only if running tasks other than the editor tasks
 glob.sync('gulpfile.*.ts', { cwd: import.meta.dirname })
+	.filter(f => f !== 'gulpfile.reh.ts')
 	.forEach(f => {
 		return require(`./${f}`);
 	});

@@ -52,10 +52,6 @@ export async function main(argv: string[]): Promise<void> {
 
 	for (const subcommand of NATIVE_CLI_COMMANDS) {
 		if (args[subcommand]) {
-			if (!product.tunnelApplicationName) {
-				console.error(`'${subcommand}' command not supported in ${product.applicationName}`);
-				return;
-			}
 			const env: IProcessEnvironment = {
 				...process.env
 			};
@@ -65,25 +61,25 @@ export async function main(argv: string[]): Promise<void> {
 			// Refs https://github.com/microsoft/vscode/issues/221883
 			delete env['ELECTRON_RUN_AS_NODE'];
 
-			const tunnelArgs = argv.slice(argv.indexOf(subcommand) + 1); // all arguments behind `tunnel`
+			const commandArgs = argv.slice(argv.indexOf(subcommand) + 1);
 			return new Promise((resolve, reject) => {
-				let tunnelProcess: ChildProcess;
+				let cliProcess: ChildProcess;
 				const stdio: StdioOptions = ['ignore', 'pipe', 'pipe'];
 				if (process.env['VSCODE_DEV']) {
-					tunnelProcess = spawn('cargo', ['run', '--', subcommand, ...tunnelArgs], { cwd: join(getAppRoot(), 'cli'), stdio, env });
+					cliProcess = spawn('cargo', ['run', '--', subcommand, ...commandArgs], { cwd: join(getAppRoot(), 'cli'), stdio, env });
 				} else {
 					const appPath = process.platform === 'darwin'
-						// ./Contents/MacOS/Code => ./Contents/Resources/app/bin/code-tunnel-insiders
+						// ./Contents/MacOS/Atlas => ./Contents/Resources/app/bin/atlas
 						? join(dirname(dirname(process.execPath)), 'Resources', 'app')
 						: dirname(process.execPath);
-					const tunnelCommand = join(appPath, 'bin', `${product.tunnelApplicationName}${isWindows ? '.exe' : ''}`);
-					tunnelProcess = spawn(tunnelCommand, [subcommand, ...tunnelArgs], { cwd: cwd(), stdio, env });
+					const cliCommand = join(appPath, 'bin', `${product.applicationName}${isWindows ? '.exe' : ''}`);
+					cliProcess = spawn(cliCommand, [subcommand, ...commandArgs], { cwd: cwd(), stdio, env });
 				}
 
-				tunnelProcess.stdout!.pipe(process.stdout);
-				tunnelProcess.stderr!.pipe(process.stderr);
-				tunnelProcess.on('exit', resolve);
-				tunnelProcess.on('error', reject);
+				cliProcess.stdout!.pipe(process.stdout);
+				cliProcess.stderr!.pipe(process.stderr);
+				cliProcess.on('exit', resolve);
+				cliProcess.on('error', reject);
 			});
 		}
 	}

@@ -12,6 +12,10 @@ import * as interfaces from './interfaces';
 import TelemetryReporter from '@vscode/extension-telemetry';
 
 const ConfigurationSectionName = 'merge-conflict';
+const nullTelemetryReporter = {
+	sendTelemetryEvent() { /* noop */ },
+	dispose() { /* noop */ }
+} as unknown as TelemetryReporter;
 
 export default class ServiceWrapper implements vscode.Disposable {
 
@@ -19,8 +23,8 @@ export default class ServiceWrapper implements vscode.Disposable {
 	private telemetryReporter: TelemetryReporter;
 
 	constructor(private context: vscode.ExtensionContext) {
-		const { aiKey } = context.extension.packageJSON as { aiKey: string };
-		this.telemetryReporter = new TelemetryReporter(aiKey);
+		const { aiKey } = context.extension.packageJSON as { aiKey?: string };
+		this.telemetryReporter = aiKey ? new TelemetryReporter(aiKey) : nullTelemetryReporter;
 		context.subscriptions.push(this.telemetryReporter);
 	}
 

@@ -1,9 +1,9 @@
 {
-  "name": "code-oss-dev",
+  "name": "atlas-dev",
   "version": "1.112.0",
   "distro": "af92bdba4fde517633b51b6706479a636c8d541a",
   "author": {
-    "name": "Microsoft Corporation"
+    "name": "Atlas Contributors"
   },
   "license": "MIT",
   "main": "./out/main.js",
@@ -66,8 +66,6 @@
     "compile-build": "npm run gulp compile-build-with-mangling",
     "compile-extensions-build": "npm run gulp compile-extensions-build",
     "minify-vscode": "npm run gulp minify-vscode",
-    "minify-vscode-reh": "npm run gulp minify-vscode-reh",
-    "minify-vscode-reh-web": "npm run gulp minify-vscode-reh-web",
     "hygiene": "npm run gulp hygiene",
     "core-ci": "npm run gulp core-ci",
     "core-ci-pr": "npm run gulp core-ci-pr",
@@ -246,10 +244,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/microsoft/vscode.git"
+    "url": "https://github.com/skywalkerx28/Atlas.git"
   },
   "bugs": {
-    "url": "https://github.com/microsoft/vscode/issues"
+    "url": "https://github.com/skywalkerx28/Atlas/issues"
   },
   "optionalDependencies": {
     "windows-foreground-love": "0.6.1"

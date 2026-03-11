@@ -95,20 +95,14 @@ class ApplyChangesToParentRepoAction extends Action2 {
 
 		const openFolderAction = toAction({
 			id: 'applyChangesToParentRepo.openFolder',
-			label: localize('openInVSCode', "Open in VS Code"),
+			label: localize('openInVSCode', "Open in Atlas"),
 			run: () => {
-				const scheme = productService.quality === 'stable'
-					? 'vscode'
-					: productService.quality === 'exploration'
-						? 'vscode-exploration'
-						: 'vscode-insiders';
-
 				const params = new URLSearchParams();
 				params.set('windowId', '_blank');
 				params.set('session', activeSession.resource.toString());
 
 				openerService.open(URI.from({
-					scheme,
+					scheme: productService.urlProtocol,
 					authority: Schemas.file,
 					path: repoRoot.path,
 					query: params.toString(),

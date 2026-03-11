@@ -17,6 +17,7 @@ import sourcemaps from 'gulp-sourcemaps';
 import * as path from 'path';
 import * as nodeUtil from 'util';
 import * as ext from './lib/extensions.ts';
+import { isAtlasRemovedExtensionPath } from './lib/atlasProduct.ts';
 import { getVersion } from './lib/getVersion.ts';
 import { createReporter } from './lib/reporter.ts';
 import * as task from './lib/task.ts';
@@ -96,9 +97,9 @@ const compilations = [
 	'.vscode/extensions/vscode-selfhost-test-provider/tsconfig.json',
 	'.vscode/extensions/vscode-selfhost-import-aid/tsconfig.json',
 	'.vscode/extensions/vscode-extras/tsconfig.json',
-];
+].filter(tsconfigFile => !isAtlasRemovedExtensionPath(tsconfigFile));
 
-const getBaseUrl = (out: string) => `https://main.vscode-cdn.net/sourcemaps/${commit}/${out}`;
+const getBaseUrl = (out: string) => `https://atlas-cdn.localhost/sourcemaps/${commit}/${out}`;
 
 function rewriteTsgoSourceMappingUrlsIfNeeded(build: boolean, out: string, baseUrl: string): Promise<void> {
 	if (!build) {

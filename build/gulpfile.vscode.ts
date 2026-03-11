@@ -26,6 +26,7 @@ import * as crypto from 'crypto';
 import * as i18n from './lib/i18n.ts';
 import { getProductionDependencies } from './lib/dependencies.ts';
 import { config } from './lib/electron.ts';
+import { ATLAS_COPYRIGHT_HOLDER, ATLAS_COPYRIGHT_NOTICE, isAtlasRemovedExtensionName } from './lib/atlasProduct.ts';
 import { createAsar } from './lib/asar.ts';
 import minimist from 'minimist';
 import { compileBuildWithoutManglingTask, compileBuildWithManglingTask } from './gulpfile.compile.ts';
@@ -238,7 +239,7 @@ function runTsGoTypeCheck(): Promise<void> {
 	});
 }
 
-const sourceMappingURLBase = `https://main.vscode-cdn.net/sourcemaps/${commit}`;
+const sourceMappingURLBase = `https://atlas-cdn.localhost/sourcemaps/${commit}`;
 const isCI = !!process.env['CI'] || !!process.env['BUILD_ARTIFACTSTAGINGDIRECTORY'] || !!process.env['GITHUB_WORKSPACE'];
 const useCdnSourceMapsForPackagingTasks = isCI;
 const stripSourceMapsInPackagingTasks = isCI;
@@ -352,7 +353,16 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 			return !set.has(platform);
 		}).map(ext => `!.build/extensions/${ext.name}/**`);
 
-		const extensions = gulp.src(['.build/extensions/**', ...platformSpecificBuiltInExtensionsExclusions], { base: '.build', dot: true });
+			const atlasRemovedExtensionExclusions = ['.build/extensions/**', ...platformSpecificBuiltInExtensionsExclusions];
+			for (const extensionName of product.builtInExtensions.map(ext => ext.name)) {
+				if (isAtlasRemovedExtensionName(extensionName)) {
+					atlasRemovedExtensionExclusions.push(`!.build/extensions/${extensionName}/**`);
+				}
+			}
+			for (const extensionName of ['github', 'github-authentication', 'microsoft-authentication', 'simple-browser', 'tunnel-forwarding']) {
+				atlasRemovedExtensionExclusions.push(`!.build/extensions/${extensionName}/**`);
+			}
+			const extensions = gulp.src(atlasRemovedExtensionExclusions, { base: '.build', dot: true });
 
 		const sourceFilterPattern = stripSourceMapsInPackagingTasks
 			? ['**', '!**/*.{js,css}.map']
@@ -661,11 +671,11 @@ function patchWin32DependenciesTask(destinationFolderName: string) {
 			await rcedit(path.join(cwd, dep), {
 				'file-version': baseVersion,
 				'version-string': {
-					'CompanyName': 'Microsoft Corporation',
+					'CompanyName': ATLAS_COPYRIGHT_HOLDER,
 					'FileDescription': product.nameLong,
 					'FileVersion': packageJson.version,
 					'InternalName': basename,
-					'LegalCopyright': 'Copyright (C) 2026 Microsoft. All rights reserved',
+					'LegalCopyright': ATLAS_COPYRIGHT_NOTICE,
 					'OriginalFilename': basename,
 					'ProductName': product.nameLong,
 					'ProductVersion': packageJson.version,

@@ -243,7 +243,7 @@ export class IsolationModePicker extends Disposable {
 		const items: IActionListItem<IsolationMode>[] = [
 			{
 				kind: ActionListItemKind.Action,
-				label: localize('isolationMode.worktree', "Copilot CLI"),
+				label: localize('isolationMode.worktree', "Atlas CLI"),
 				group: { title: '', icon: Codicon.worktree },
 				item: 'worktree',
 			},
@@ -296,7 +296,7 @@ export class IsolationModePicker extends Disposable {
 		const isDisabled = !this._repository;
 		const modeIcon = this._isolationMode === 'worktree' ? Codicon.worktree : Codicon.folder;
 		const modeLabel = this._isolationMode === 'worktree'
-			? localize('isolationMode.worktree', "Copilot CLI")
+			? localize('isolationMode.worktree', "Atlas CLI")
 			: localize('isolationMode.folder', "Local");
 
 		dom.append(this._triggerElement, renderIcon(modeIcon));

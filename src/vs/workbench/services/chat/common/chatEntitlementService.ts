@@ -186,20 +186,20 @@ export function isProUser(chatEntitlement: ChatEntitlement): boolean {
 /**
  * Gets the full plan name for the given chat entitlement
  * @param chatEntitlement The chat entitlement to get the plan name for
- * @returns The localized full plan name (e.g., "Copilot Pro", "Copilot Free")
+ * @returns The localized full plan name (e.g., "Atlas Pro", "Atlas Free")
  */
 export function getChatPlanName(chatEntitlement: ChatEntitlement): string {
 	switch (chatEntitlement) {
 		case ChatEntitlement.Pro:
-			return localize('plan.proName', 'Copilot Pro');
+			return localize('plan.proName', 'Atlas Pro');
 		case ChatEntitlement.ProPlus:
-			return localize('plan.proPlusName', 'Copilot Pro+');
+			return localize('plan.proPlusName', 'Atlas Pro+');
 		case ChatEntitlement.Business:
-			return localize('plan.businessName', 'Copilot Business');
+			return localize('plan.businessName', 'Atlas Business');
 		case ChatEntitlement.Enterprise:
-			return localize('plan.enterpriseName', 'Copilot Enterprise');
+			return localize('plan.enterpriseName', 'Atlas Enterprise');
 		default:
-			return localize('plan.freeName', 'Copilot Free');
+			return localize('plan.freeName', 'Atlas Free');
 	}
 }
 
@@ -838,6 +838,11 @@ export class ChatEntitlementRequests extends Disposable {
 	}
 
 	private async doSignUpFree(sessions: AuthenticationSession[]): Promise<true /* signed up */ | false /* already signed up */ | { errorCode: number } /* error */> {
+		if (!defaultChatAgent.entitlementSignupLimitedUrl) {
+			this.logService.warn('[chat entitlement] sign-up: no entitlement signup URL configured');
+			return { errorCode: 1 };
+		}
+
 		const body = {
 			restricted_telemetry: this.telemetryService.telemetryLevel === TelemetryLevel.NONE ? 'disabled' : 'enabled',
 			public_code_suggestions: 'enabled'
@@ -914,7 +919,7 @@ export class ChatEntitlementRequests extends Disposable {
 		if (!this.lifecycleService.willShutdown) {
 			const { confirmed } = await this.dialogService.confirm({
 				type: Severity.Error,
-				message: localize('unknownSignUpError', "An error occurred while signing up for the GitHub Copilot Free plan. Would you like to try again?"),
+				message: localize('unknownSignUpError', "An error occurred while signing up for the Atlas Free plan. Would you like to try again?"),
 				detail,
 				primaryButton: localize('retry', "Retry")
 			});
@@ -929,20 +934,24 @@ export class ChatEntitlementRequests extends Disposable {
 		this.logService.error(logMessage);
 
 		if (!this.lifecycleService.willShutdown) {
+			const buttons = [
+				{
+					label: localize('ok', "OK"),
+					run: () => { /* noop */ }
+				}
+			];
+			if (defaultChatAgent.upgradePlanUrl) {
+				buttons.push({
+					label: localize('learnMore', "Learn More"),
+					run: () => this.openerService.open(URI.parse(defaultChatAgent.upgradePlanUrl))
+				});
+			}
+
 			this.dialogService.prompt({
 				type: Severity.Error,
-				message: localize('unprocessableSignUpError', "An error occurred while signing up for the GitHub Copilot Free plan."),
+				message: localize('unprocessableSignUpError', "An error occurred while signing up for the Atlas Free plan."),
 				detail: logDetails,
-				buttons: [
-					{
-						label: localize('ok', "OK"),
-						run: () => { /* noop */ }
-					},
-					{
-						label: localize('learnMore', "Learn More"),
-						run: () => this.openerService.open(URI.parse(defaultChatAgent.upgradePlanUrl))
-					}
-				]
+				buttons
 			});
 		}
 	}

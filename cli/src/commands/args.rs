@@ -164,10 +164,6 @@ pub struct StandaloneUpdateArgs {
 #[derive(Subcommand, Debug, Clone)]
 
 pub enum Commands {
-	/// Create a tunnel that's accessible on vscode.dev from anywhere.
-	/// Run `code tunnel --help` for more usage info.
-	Tunnel(TunnelArgs),
-
 	/// Manage editor extensions.
 	#[clap(name = "ext")]
 	Extension(ExtensionArgs),
@@ -178,7 +174,7 @@ pub enum Commands {
 	/// Changes the version of the editor you're using.
 	Version(VersionArgs),
 
-	/// Runs a local web version of VS Code.
+	/// Runs a local web version of Atlas.
 	#[clap(about = concatcp!("Runs a local web version of ", constants::PRODUCT_NAME_LONG))]
 	ServeWeb(ServeWebArgs),
 

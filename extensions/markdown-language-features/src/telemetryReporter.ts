@@ -8,7 +8,7 @@ import * as vscode from 'vscode';
 interface IPackageInfo {
 	name: string;
 	version: string;
-	aiKey: string;
+	aiKey?: string;
 }
 
 export interface TelemetryReporter {
@@ -44,7 +44,7 @@ class ExtensionReporter implements TelemetryReporter {
 
 export function loadDefaultTelemetryReporter(): TelemetryReporter {
 	const packageInfo = getPackageInfo();
-	return packageInfo ? new ExtensionReporter(packageInfo) : nullReporter;
+	return packageInfo?.aiKey ? new ExtensionReporter(packageInfo) : nullReporter;
 }
 
 function getPackageInfo(): IPackageInfo | null {

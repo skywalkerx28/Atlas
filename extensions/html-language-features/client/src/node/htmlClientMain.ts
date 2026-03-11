@@ -18,7 +18,7 @@ let client: AsyncDisposable | undefined;
 export async function activate(context: ExtensionContext) {
 
 	const clientPackageJSON = getPackageInfo(context);
-	telemetry = new TelemetryReporter(clientPackageJSON.aiKey);
+	telemetry = clientPackageJSON.aiKey ? new TelemetryReporter(clientPackageJSON.aiKey) : undefined;
 
 	const serverMain = `./server/${clientPackageJSON.main.indexOf('/dist/') !== -1 ? 'dist' : 'out'}/node/htmlServerMain`;
 	const serverModule = context.asAbsolutePath(serverMain);
@@ -61,7 +61,7 @@ export async function deactivate(): Promise<void> {
 interface IPackageInfo {
 	name: string;
 	version: string;
-	aiKey: string;
+	aiKey?: string;
 	main: string;
 }
 
@@ -71,6 +71,6 @@ function getPackageInfo(context: ExtensionContext): IPackageInfo {
 		return JSON.parse(fs.readFileSync(location).toString());
 	} catch (e) {
 		console.log(`Problems reading ${location}: ${e}`);
-		return { name: '', version: '', aiKey: '', main: '' };
+		return { name: '', version: '', main: '' };
 	}
 }

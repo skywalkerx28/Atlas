@@ -107,7 +107,7 @@ export class NewChatPermissionPicker extends Disposable {
 					checked: this._currentLevel === ChatPermissionLevel.Default,
 				},
 				label: localize('permissions.default', "Default Approvals"),
-				description: localize('permissions.default.subtext', "Copilot uses your configured settings"),
+				description: localize('permissions.default.subtext', "Atlas uses your configured settings"),
 				disabled: false,
 			},
 			{

@@ -32,6 +32,17 @@ import { getAskpassPaths } from './askpassManager';
 
 const deactivateTasks: { (): Promise<void> }[] = [];
 
+function createTelemetryReporter(aiKey: string | undefined): TelemetryReporter {
+	if (aiKey) {
+		return new TelemetryReporter(aiKey);
+	}
+
+	return {
+		sendTelemetryEvent() { /* noop */ },
+		dispose() { return Promise.resolve(); }
+	} as unknown as TelemetryReporter;
+}
+
 export async function deactivate(): Promise<void> {
 	for (const task of deactivateTasks) {
 		await task();
@@ -202,8 +213,8 @@ export async function _activate(context: ExtensionContext): Promise<GitExtension
 	disposables.push(logger.onDidChangeLogLevel(onDidChangeLogLevel));
 	onDidChangeLogLevel(logger.logLevel);
 
-	const { aiKey } = require('../package.json') as { aiKey: string };
-	const telemetryReporter = new TelemetryReporter(aiKey);
+	const { aiKey } = require('../package.json') as { aiKey?: string };
+	const telemetryReporter = createTelemetryReporter(aiKey);
 	deactivateTasks.push(() => telemetryReporter.dispose());
 
 	const config = workspace.getConfiguration('git', null);

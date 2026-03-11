@@ -265,9 +265,9 @@ export class ChatManagementEditor extends EditorPane {
 		const headerTitleContainer = DOM.append(this.headerContainer, $('.header-title-container'));
 		const headerTitleWrapper = DOM.append(headerTitleContainer, $('.header-title-wrapper'));
 
-		// Copilot label
+		// Product label
 		const tile = DOM.append(headerTitleWrapper, $('.ai-management-editor-title'));
-		tile.textContent = localize('plan.copilot', 'Copilot');
+		tile.textContent = localize('plan.copilot', 'Atlas');
 
 		// Plan badge
 		this.planBadge = DOM.append(headerTitleWrapper, $('.plan-badge'));
@@ -341,7 +341,7 @@ export class ChatManagementEditor extends EditorPane {
 		// Set plan name and toggle visibility based on plan type
 		if (anonymousUser || isFreePlan) {
 			if (anonymousUser) {
-				// Hide badge for anonymous users, only show "Copilot" label
+				// Hide badge for anonymous users, only show the product label
 				this.planBadge.style.display = 'none';
 			} else {
 				// Show "Free" badge for free plan
@@ -352,7 +352,7 @@ export class ChatManagementEditor extends EditorPane {
 			this.planBadge.style.display = '';
 			// Extract just the plan type (Pro, Pro+, Business, Enterprise)
 			const planName = this.getCurrentPlanName();
-			this.planBadge.textContent = planName.replace('Copilot ', '');
+			this.planBadge.textContent = planName.replace('Atlas ', '');
 		}
 
 		const shouldUpgrade = this.shouldShowUpgradeButton();
@@ -367,14 +367,14 @@ export class ChatManagementEditor extends EditorPane {
 			if (shouldUpgrade && !isFreePlan && !anonymousUser) {
 				// Upgrade for paid plans
 				if (this.chatEntitlementService.entitlement === ChatEntitlement.Pro) {
-					buttonLabel = localize('plan.upgradeToProPlus', 'Upgrade to Copilot Pro+');
+					buttonLabel = localize('plan.upgradeToProPlus', 'Upgrade to Atlas Pro+');
 				} else {
-					buttonLabel = localize('plan.upgradeToPro', 'Upgrade to Copilot Pro');
+					buttonLabel = localize('plan.upgradeToPro', 'Upgrade to Atlas Pro');
 				}
 				commandId = 'workbench.action.chat.upgradePlan';
 			} else if (shouldUpgrade && (isFreePlan || anonymousUser)) {
 				// Upgrade case for free plan
-				buttonLabel = localize('upgradeToCopilotPro', 'Upgrade to Copilot Pro');
+				buttonLabel = localize('upgradeToCopilotPro', 'Upgrade to Atlas Pro');
 				commandId = 'workbench.action.chat.upgradePlan';
 			} else if (newUser) {
 				buttonLabel = localize('enableAIFeatures', "Use AI Features");

@@ -8,7 +8,7 @@ import * as vscode from 'vscode';
 export interface PackageInfo {
 	name: string;
 	version: string;
-	aiKey: string;
+	aiKey?: string;
 }
 
 export function getPackageInfo(context: vscode.ExtensionContext) {
@@ -17,7 +17,7 @@ export function getPackageInfo(context: vscode.ExtensionContext) {
 		return {
 			name: packageJSON.name ?? '',
 			version: packageJSON.version ?? '',
-			aiKey: packageJSON.aiKey ?? '',
+			aiKey: packageJSON.aiKey ?? undefined,
 		};
 	}
 	return null;
