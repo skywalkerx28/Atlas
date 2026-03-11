@@ -38,30 +38,29 @@ The harness daemon (`axiom-harness serve`) is a long-running process that expose
 - **Authentication**: Token-based client identity, per-method capability model, audit attribution on all writes
 - **Resumable streams**: Monotonic sequence numbers per topic, resume-from-seq on reconnect, `resync_required` for gap recovery
 - **Stream classification**: Coalescible topics (fleet, health, cost) vs. loss-intolerant topics (reviews, journal, transcripts, activity)
-- **Write delegation**: `dispatch.submit`, `objective.submit`, `event.emit` call existing harness service entry points — the daemon never reimplements validation
+- **Write delegation (future)**: once the daemon exposes write families, Atlas should route them through daemon methods such as `dispatch.submit`, `objective.submit`, and `event.emit` rather than bypassing harness validation
 - **Failure isolation**: Daemon and orchestrator run as independent tokio tasks with bounded queues and panic containment
 
-### Fallback: Direct Mode (Polling)
+### Fallback: Read-Only Polling
 
-When the daemon is not running, Atlas falls back to the same IPC model the TUI uses:
+Wave A Atlas does not implement the TUI's broader direct-mode IPC surface. When the daemon is absent, Atlas falls back only to:
 
-1. **SQLite read** — Read-only connection to `router.db` (WAL mode, 15s busy timeout) for fleet state polling.
-2. **JSONL file tailing** — `activity.jsonl` and `metrics.jsonl` per dispatch run. Incremental reads via file offset tracking.
-3. **CLI subprocess** — `axiom-harness <command>` with JSON stdout for write operations.
+1. **SQLite read** — Read-only connection to `router.db` for fleet-relevant polling.
+
+JSONL tailing and CLI subprocess write paths are intentionally not implemented in the Atlas bridge. This preserves a single authenticated control plane instead of adding a second write surface beside the daemon.
 
 ### Write Contract
 
 Atlas does **not** write directly to `dispatch_queue`, `workspace_event_queue`, or `objectives` tables. These tables have validation, idempotency, and journal recording logic in the harness service layer (`EventDispatcher`, `ObjectiveIntakeService`, `dispatch.rs`) that must not be bypassed.
 
-Atlas writes are limited to:
+Wave A Atlas ships **no write path**. In both daemon mode and polling mode:
 
-| Write Target | Method | Why Safe |
-|--------------|--------|----------|
-| `dispatch_control` | Direct SQLite INSERT | This table is a simple command queue; the pool loop validates and applies actions. The TUI uses the same pattern. |
-| Dispatch new work | CLI: `axiom-harness dispatch` or daemon: `dispatch.submit` | Goes through harness validation, idempotency key generation, and journal recording. |
-| Submit objective | CLI: `axiom-harness objective` or daemon: `objective.submit` | Goes through `ObjectiveIntakeService` for spec validation and packet materialization. |
-| Workspace events | CLI or daemon: `event.emit` | Goes through `enqueue_workspace_event()` with idempotency and schema validation. |
-| Steer an agent | CLI: `orchestrator-backend.sh` or daemon: `control.steer` | Routed through the harness's steer infrastructure. |
+- `writesEnabled` is `false`
+- all `IHarnessService` write methods fail closed
+- there is no CLI subprocess write fallback
+- there is no direct SQLite write path
+
+When later daemon method families exist, Atlas can delegate writes through the daemon only.
 
 Atlas implements this as `IHarnessService` — a singleton service in `sessions/services/harness/` that manages a connection to one harness workspace and exposes all data as observables. The service auto-detects whether the daemon socket is available and chooses the appropriate transport.
 
@@ -88,9 +87,9 @@ The implication for Atlas is simple: the UI should group data by swarm first, th
 The central bridge between Atlas and the harness. Manages:
 
 - **Connection lifecycle**: Attempts daemon socket at `$AXIOM_HARNESS_SOCK` or `~/.codex/harness.sock`; falls back to resolving `router.db` via the harness path resolution chain (see Environment Variables below)
-- **Daemon mode**: Subscribes to real-time notifications (`fleet.delta`, `activity.event`, etc.) via JSON-RPC 2.0 over Unix socket
-- **Polling mode** (fallback): Tails SQLite tables and JSONL files on an interval (e.g. 500ms), emits observables
-- **Write operations**: In daemon mode, sends JSON-RPC requests (`control.pause`, `dispatch.submit`, etc.); in polling mode, spawns `axiom-harness` CLI subprocesses or writes to `dispatch_control` directly
+- **Daemon mode (Wave A)**: Performs `initialize`, loads `fleet.snapshot`, subscribes to `fleet.delta`, and keeps unsupported observables empty/default
+- **Polling mode** (fallback): Polls read-only SQLite tables for fleet-relevant state on an interval
+- **Write operations (Wave A)**: All writes fail closed. Atlas does not shell out to `axiom-harness`, invoke `orchestrator-backend.sh`, or write `dispatch_control`
 - **State aggregation**: Mirrors the TUI's `FleetSnapshot` pattern — assembles all data into a single reactive state tree
 
 ```typescript
@@ -114,7 +113,7 @@ interface IHarnessService {
     // Activity stream (read from JSONL)
     readonly activityEvents: Event<IActivityEvent>;
 
-    // Control actions (dispatch_control direct write or daemon control.*)
+    // Control actions (Wave A: fail closed in all modes)
     pause(dispatchId: string): Promise<void>;
     cancel(dispatchId: string): Promise<void>;
     resume(dispatchId: string): Promise<void>;
@@ -122,11 +121,11 @@ interface IHarnessService {
     resumeAll(): Promise<void>;
     reprioritize(dispatchId: string, priority: Priority): Promise<void>;
 
-    // Dispatch (via CLI subprocess or daemon — never direct SQLite insert)
+    // Dispatch (Wave A: fail closed until daemon exposes dispatch methods)
     dispatch(packet: ITaskPacket): Promise<IDispatchOutcome>;
     submitObjective(spec: IObjectiveSpec): Promise<string>;
 
-    // Workspace events (via CLI subprocess or daemon — never direct SQLite insert)
+    // Workspace events (Wave A: fail closed until daemon exposes event/control methods)
     steer(dispatchId: string, message: string): Promise<void>;
     emitEvent(event: IWorkspaceEvent): Promise<void>;
 
@@ -144,7 +143,7 @@ interface IHarnessService {
 
 ## SQLite Schema (What Atlas Reads)
 
-All tables live in a single `router.db`. In daemon mode, Atlas does not open SQLite directly — the daemon handles all reads and pushes deltas. In fallback mode, Atlas opens a **read-only** connection for polling and may write to `dispatch_control` only.
+All tables live in a single `router.db`. In daemon mode, Atlas does not open SQLite directly — the daemon handles all reads and pushes deltas. In fallback mode, Atlas opens a **read-only** connection for polling only.
 
 ### Core Tables
 
@@ -157,7 +156,7 @@ All tables live in a single `router.db`. In daemon mode, Atlas does not open SQL
 | `workspace_event_queue` | Event bus | `event_id`, `task_id`, `role_id`, `event_kind`, `payload_json`, `status` (pending/processing/acked/dead_letter) | Activity Stream |
 | `review_queue` | Review entries | `task_id`, `state`, `decision`, `score`, `confidence`, `failed_checks`, `summary` | Reviews View |
 | `pool_health` | Fleet health (singleton) | `mode` (normal/nats_down/disk_pressure/cost_ceiling/paused), `disk_usage_pct`, `memory_usage_pct`, `active_workers`, `queue_depth` | Fleet Command, Health Monitor |
-| `dispatch_control` | Control commands | `action` (pause/cancel/pause_all/resume_all/reprioritize), `dispatch_id`, `new_priority` | Write target for Atlas actions |
+| `dispatch_control` | Control commands | `action` (pause/cancel/pause_all/resume_all/reprioritize), `dispatch_id`, `new_priority` | Not used by Wave A Atlas bridge |
 | `resource_snapshots` | Per-dispatch resources | `dispatch_id`, `cpu_utilization`, `memory_utilization`, `disk_utilization` | Agent Inspector |
 
 These are not separate per-task databases. Atlas derives swarm boundaries by grouping records around objective/root-task lineage inside this shared project-level store.
@@ -396,47 +395,28 @@ Each dispatch has a checkpoint directory: `<harness_home>/.codex/orchestrator/ch
 
 ## Data Flow: Atlas Surface → Harness Source
 
-### Daemon Mode (Primary)
+### Daemon Mode (Primary, Wave A)
 
 | Atlas Surface | Daemon Subscription | Daemon Request | Write Method |
 |---------------|-------------------|----------------|--------------|
 | Fleet Command | `fleet.delta` | `fleet.snapshot` | — |
-| Agents View | `fleet.delta` | `agent.get` | — |
-| Tasks View | `queue.update` | `task.list` | — |
-| Objectives View | — | `objective.list`, `objective.graph` | — |
-| Activity Stream | `activity.event` | — | — |
-| Cost Monitor | `cost.update` | `cost.get` | — |
-| Health Monitor | `health.update` | `health.get` | — |
-| Reviews View | `review.update` | `review.list` | — |
-| Merge Control | — | `merge.list` | — |
-| Agent Execution View | `transcript.delta` + `activity.event` | `agent.transcript` | — |
-| Pre-Execution Review | — | `task.packet` | — |
-| Post-Execution Review | — | `agent.get` (result packet) | — |
-| Steering | — | — | `control.steer` |
-| Pause/Cancel/Resume | — | — | `control.pause` / `control.cancel` / `control.resume` |
-| Dispatch New Work | — | — | `dispatch.submit` |
-| Submit Objective | — | — | `objective.submit` |
+| Agents View | `fleet.delta` | `fleet.snapshot` | — |
+| Health Monitor | `fleet.delta` | `fleet.snapshot` | — |
+| Cost Monitor | — | — | — |
+| Tasks / Objectives / Reviews / Merge / Activity | — | — | — |
+| Any write action | — | — | Fail closed |
+
+Wave A only consumes the currently merged daemon surface: `initialize`, `shutdown`, `daemon.ping`, `fleet.snapshot`, `fleet.subscribe`, and `fleet.unsubscribe`. Later topic and write families remain future work.
 
 ### Fallback Mode (SQLite Polling)
 
 | Atlas Surface | Read From | Write To | Poll Interval |
 |---------------|-----------|----------|---------------|
-| Fleet Command | `worker_registry` + `pool_health` | — | 500ms |
-| Agents View | `worker_registry` + `dispatch_queue` | — | 500ms |
-| Tasks View | `dispatch_queue` + `objectives` | — | 1s |
-| Objectives View | `objectives` + `planner_hierarchy` | — | 2s |
-| Activity Stream | `activity.jsonl` (per dispatch) | — | 250ms (tail) |
-| Cost Monitor | `metrics.jsonl` + cost budget config | — | 2s |
-| Health Monitor | `pool_health` | — | 1s |
-| Reviews View | `review_queue` | — | 1s |
-| Merge Control | `merge_queue` | — | 2s |
-| Agent Execution View | `conversation.jsonl` + `activity.jsonl` | — | 250ms (tail) |
-| Pre-Execution Review | Task packet files on disk | — | On demand |
-| Post-Execution Review | Result packet files on disk | — | On demand |
-| Steering | — | CLI: `orchestrator-backend.sh` | — |
-| Pause/Cancel/Resume | — | `dispatch_control` (direct write) | — |
-| Dispatch New Work | — | CLI: `axiom-harness dispatch` | — |
-| Submit Objective | — | CLI: `axiom-harness objective` | — |
+| Fleet Command | `worker_registry` + `dispatch_queue` + `pool_health` + queue tables | — | 1s |
+| Agents View | `worker_registry` + `dispatch_queue` | — | 1s |
+| Health Monitor | `pool_health` + queue tables | — | 1s |
+| Cost / Tasks / Objectives / Reviews / Merge / Activity | — | — | — |
+| Any write action | — | Fail closed | — |
 
 ---
 
@@ -448,7 +428,7 @@ Each dispatch has a checkpoint directory: `<harness_home>/.codex/orchestrator/ch
 |----------|---------|---------|
 | `AXIOM_HARNESS_SOCK` | Path to daemon Unix socket | `~/.codex/harness.sock` |
 
-Atlas tries the daemon socket first. If the socket does not exist or connection fails, it falls back to direct mode using the DB path resolution below.
+Atlas tries the daemon socket first. If the socket is absent or unreachable, it falls back to read-only polling using the DB path resolution below. Protocol/auth/capability failures stay fail-closed rather than degrading to polling.
 
 ### DB Path Resolution Chain (Fallback)
 

@@ -1135,6 +1135,8 @@ export function mapWireAgent(wire: IWireAgentState): IAgentState {
 
 **Critical design rule: polling mode is read-only.** When the daemon is absent, Atlas can browse cached/polled state but cannot issue writes. This ensures a single authenticated control plane — all writes flow through the daemon's token auth, capability model, and audit trail. There is no second privileged write path via CLI subprocess.
 
+**Wave A daemon scope is intentionally narrow.** The currently merged daemon surface only exposes `initialize`, `shutdown`, `daemon.ping`, `fleet.snapshot`, `fleet.subscribe`, and `fleet.unsubscribe`. Atlas therefore keeps `writesEnabled: false` even in daemon mode, subscribes only to fleet state, and leaves all unsupported read/write families empty or fail-closed.
+
 ```typescript
 // electron-browser/harnessService.ts
 
@@ -1148,27 +1150,26 @@ export class DesktopHarnessService extends Disposable implements IHarnessService
     // ... similarly for objectives, swarms, tasks, health, cost, reviewGates, mergeQueue
 
     async connect(workspaceRoot: URI): Promise<void> {
-        const socketPath = process.env['AXIOM_HARNESS_SOCK'] || path.join(homedir(), '.codex', 'harness.sock');
         try {
             this.daemonClient = this._register(new HarnessDaemonClient());
-            const initResult = await this.daemonClient.connect(socketPath, this.getToken());
+            const initResult = await this.daemonClient.connect(this.resolveDaemonSocketPath(workspaceRoot), this.getToken());
             this._connectionState.set({
                 state: HarnessConnectionState.Connected,
                 mode: 'daemon',
-                writesEnabled: true,  // daemon mode: full read+write
+                writesEnabled: false, // Wave A: daemon is read-only from Atlas
                 ...
             });
 
-            // Subscribe to all topics
+            // Wave A subscribes only to fleet state the daemon actually exposes.
             this.daemonClient.onNotification((method, params) => {
                 this.handleNotification(method, params);
             });
+            await this.daemonClient.request('fleet.snapshot', {});
             await this.daemonClient.request('fleet.subscribe', {});
-            await this.daemonClient.request('health.subscribe', {});
-            await this.daemonClient.request('cost.subscribe', {});
-            await this.daemonClient.request('review.gate_state.subscribe', {});
-            await this.daemonClient.request('merge.queue.subscribe', {});
-        } catch {
+        } catch (error) {
+            if (!isDaemonUnavailable(error)) {
+                throw error;
+            }
             // Fallback to read-only SQLite polling — NO writes
             const dbPath = this.resolveRouterDbPath(workspaceRoot);
             this.sqlitePoller = this._register(new HarnessSqlitePoller(dbPath));
@@ -1187,50 +1188,39 @@ export class DesktopHarnessService extends Disposable implements IHarnessService
             case 'fleet.delta':
                 this._fleet.set(mapWireFleet(params as IWireFleetDelta), undefined);
                 break;
-            case 'review.gate_state.delta':
-                this._reviewGates.set(mapWireGates(params), undefined);
-                break;
-            case 'merge.queue.delta':
-                this._mergeQueue.set(mapWireMerge(params), undefined);
-                break;
-            // ... handle all topic deltas
+            // Unsupported topic families remain empty/default in Wave A.
         }
     }
 
-    // --- Write guard: all writes require daemon ---
-    private requireDaemon(): HarnessDaemonClient {
-        if (!this.daemonClient) {
-            throw new Error(
-                'This action requires the harness daemon. '
-                + 'Atlas is in read-only polling mode because the daemon is not running. '
-                + 'Start the daemon with: axiom-harness serve'
-            );
+    private failClosedWrite(capabilityLabel: string): never {
+        if (this._connectionState.get().mode === 'daemon') {
+            throw new Error(`Current harness daemon does not yet expose ${capabilityLabel}.`);
         }
-        return this.daemonClient;
+        throw new Error('Harness daemon required; Atlas is in read-only mode.');
     }
 
-    // Control methods — daemon only, no CLI fallback
+    // Wave A write methods fail closed because the daemon does not yet expose them.
     async pauseAgent(dispatchId: string): Promise<void> {
-        await this.requireDaemon().request('control.pause', { dispatch_id: dispatchId });
+        this.failClosedWrite('control methods');
     }
 
     async recordGateVerdict(dispatchId: string, decision: ReviewDecision, reviewedByRole: string): Promise<void> {
-        await this.requireDaemon().request('review.gate_verdict', { dispatch_id: dispatchId, decision, reviewed_by_role: reviewedByRole });
+        this.failClosedWrite('review methods');
     }
 
     async authorizePromotion(dispatchId: string, authorizedByRole: string): Promise<void> {
-        await this.requireDaemon().request('review.authorize_promotion', { dispatch_id: dispatchId, authorized_by_role: authorizedByRole });
+        this.failClosedWrite('promotion methods');
     }
 
     async enqueueForMerge(dispatchId: string): Promise<void> {
-        await this.requireDaemon().request('review.enqueue_merge', { dispatch_id: dispatchId });
+        this.failClosedWrite('merge methods');
     }
 
-    // ... all other write methods also use requireDaemon()
+    // ... all other write methods also fail closed in Wave A
 }
 ```
 
-The UI layer uses `connectionState.writesEnabled` to disable action buttons when in polling mode:
+The UI layer uses `connectionState.writesEnabled` to disable action buttons whenever writes are unavailable:
 
 ```typescript
 // In any view that has write actions:
@@ -1284,8 +1274,9 @@ registerSingleton(IHarnessService, BrowserHarnessService, InstantiationType.Dela
 - TypeScript compilation clean
 - Layering check passes (new files in `vs/sessions/services/`, imports only from `vs/base/`, `vs/platform/`, `vs/sessions/common/model/`)
 - Unit test: mock daemon socket, verify initialize handshake, verify notification → observable update flow
-- Integration test: start `axiom-harness serve`, open Atlas window, verify connection state shows "Connected (daemon)" with `writesEnabled: true`
-- **Read-only fallback test**: stop daemon, open Atlas window, verify connection state shows "Connected (polling)" with `writesEnabled: false`. Verify all observables populate from SQLite. Verify all write methods throw with "daemon required" error. Verify write action buttons are disabled in the UI.
+- Integration test: start `axiom-harness serve`, open Atlas window, verify connection state shows "Connected (daemon)" with `writesEnabled: false`
+- Integration test: verify only fleet state populates from `fleet.snapshot` / `fleet.delta`, and unsupported observables remain empty/default
+- **Read-only fallback test**: stop daemon, open Atlas window, verify connection state shows "Connected (polling)" with `writesEnabled: false`. Verify fleet/health observables populate from SQLite. Verify all write methods throw with deterministic read-only errors. Verify write action buttons are disabled in the UI.
 - Disconnected test: no harness at all, verify graceful "Harness not connected" state
 - **No CLI write path test**: verify that no code path in `DesktopHarnessService` shells out to `axiom-harness` CLI for write operations. The CLI is not a second control plane.
 
