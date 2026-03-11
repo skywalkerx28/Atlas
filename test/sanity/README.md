@@ -138,8 +138,7 @@ For the following platforms only downloads are validated (and not install/runtim
 
 ### Pipeline Files
 
-- [product-sanity-tests.yml](../../build/azure-pipelines/product-sanity-tests.yml) - Main pipeline definition
-- [sanity-tests.yml](../../build/azure-pipelines/common/sanity-tests.yml) - Reusable job template
+Atlas no longer carries the upstream Azure pipeline definitions in this fork. Integrate these sanity scenarios with Atlas's own CI entrypoints instead.
 
 ## References
 

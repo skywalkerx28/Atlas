@@ -109,9 +109,16 @@ interface IBuiltInExtensionControl {
 const ATLAS_REMOVED_SYSTEM_EXTENSIONS = new Set([
 	'github',
 	'github-authentication',
+	'grunt',
+	'gulp',
+	'jake',
 	'microsoft-authentication',
 	'simple-browser',
 	'tunnel-forwarding',
+	'vscode-api-tests',
+	'vscode-colorize-perf-tests',
+	'vscode-colorize-tests',
+	'vscode-test-resolver',
 ]);
 
 export type SystemExtensionsScanOptions = {
