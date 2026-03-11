@@ -172,9 +172,6 @@ import '../workbench/contrib/mergeEditor/electron-browser/mergeEditor.contributi
 // Multi Diff Editor
 import '../workbench/contrib/multiDiffEditor/browser/multiDiffEditor.contribution.js';
 
-// Remote Tunnel
-import '../workbench/contrib/remoteTunnel/electron-browser/remoteTunnel.contribution.js';
-
 // Chat
 import '../workbench/contrib/chat/electron-browser/chat.contribution.js';
 import './contrib/agentFeedback/browser/agentFeedback.contribution.js';
@@ -209,7 +206,6 @@ import './contrib/changes/browser/changesView.contribution.js';
 import './contrib/codeReview/browser/codeReview.contributions.js';
 import './contrib/files/browser/files.contribution.js';
 import './contrib/git/browser/git.contribution.js';
-import './contrib/github/browser/github.contribution.js';
 import './contrib/applyCommitsToParentRepo/browser/applyChangesToParentRepo.js';
 import './contrib/fileTreeView/browser/fileTreeView.contribution.js'; // view registration disabled; filesystem provider still needed
 import './contrib/configuration/browser/configuration.contribution.js';

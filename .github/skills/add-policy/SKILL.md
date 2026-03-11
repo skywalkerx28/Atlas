@@ -1,6 +1,6 @@
 ---
 name: add-policy
-description: Use when adding, modifying, or reviewing VS Code configuration policies. Covers the full policy lifecycle from registration to export to platform-specific artifacts. Run on ANY change that adds a `policy:` field to a configuration property.
+description: Use when adding, modifying, or reviewing Atlas configuration policies. Covers the full policy lifecycle from registration to export to platform-specific artifacts. Run on ANY change that adds a `policy:` field to a configuration property.
 ---
 
 # Adding a Configuration Policy
@@ -113,7 +113,7 @@ If you need a new category, add it to `PolicyCategory` in `src/vs/base/common/po
 
 ### Step 3 — Validate TypeScript compilation
 
-Check the `VS Code - Build` watch task output, or run:
+Check the `Atlas - Build` watch task output, or run:
 
 ```bash
 npm run compile-check-ts-native

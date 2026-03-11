@@ -2,7 +2,7 @@
 
 Automated dogfooding tests for the Agent Sessions window using a
 **compile-and-replay** architecture powered by
-[`playwright-cli`](https://github.com/microsoft/playwright-cli) and Copilot CLI.
+[`playwright-cli`](https://github.com/microsoft/playwright-cli) and Atlas CLI.
 
 ## Mocking Architecture
 
@@ -15,7 +15,7 @@ runs through the real code paths.
 
 | Service | Mock | Why |
 |---------|------|-----|
-| `IChatEntitlementService` | Returns `ChatEntitlement.Free` | No real Copilot account in CI |
+| `IChatEntitlementService` | Returns `ChatEntitlement.Free` | No real account in CI |
 | `IDefaultAccountService` | Returns a fake signed-in account | Hides the "Sign In" button |
 | `IGitService` | Resolves immediately (no 10s barrier) | No real git extension in web tests |
 | Chat agents (`copilotcli`, etc.) | Canned keyword-matched responses with `textEdit` progress items | No real LLM backend |
@@ -103,7 +103,7 @@ npm run generate
 For each `.scenario.md` file, the generate script:
 1. Starts the Sessions web server and opens the page in `playwright-cli`
 2. Takes an accessibility tree snapshot of the current page
-3. Sends each natural-language step + snapshot to **Copilot CLI**, which returns
+3. Sends each natural-language step + snapshot to **Atlas CLI**, which returns
    the exact `playwright-cli` commands (e.g. `click e43`, `type "hello"`)
 4. Executes the commands to advance the UI state for the next step
 5. Writes the compiled commands to a `.commands.json` file in the `scenarios/generated/` folder
@@ -142,7 +142,7 @@ Run `npm run generate` when:
 ```
 e2e/
 ├── common.cjs               # Shared helpers (server, playwright-cli, parser)
-├── generate.cjs              # Compiles scenarios → .commands.json via Copilot CLI
+├── generate.cjs              # Compiles scenarios → .commands.json via Atlas CLI
 ├── test.cjs                  # Replays .commands.json deterministically
 ├── package.json              # npm scripts: generate, test
 ├── extensions/
@@ -172,7 +172,7 @@ scripts/
 
 ## Prerequisites
 
-- VS Code compiled (`out/` at the repo root):
+- Atlas compiled (`out/` at the repo root):
   ```bash
   npm install && npm run compile
   ```
@@ -180,7 +180,7 @@ scripts/
   ```bash
   cd src/vs/sessions/test/e2e && npm install
   ```
-- Copilot CLI available (for `npm run generate` only):
+- Atlas CLI available (for `npm run generate` only):
   ```bash
   copilot --version
   ```
@@ -243,7 +243,7 @@ Results: 6 passed, 0 failed
 
 ### Step Language
 
-Write steps in plain English. The Copilot agent interprets them against the
+Write steps in plain English. The Atlas agent interprets them against the
 page's accessibility tree. Common patterns:
 
 | Pattern | Example |
@@ -298,7 +298,7 @@ Let's trace `Click button "Cloud"` through both phases.
   - button "Cloud" [ref=e143]
 ```
 
-Copilot CLI returns: `click e143`
+Atlas CLI returns: `click e143`
 
 This is saved to `.commands.json` and the click is executed to advance state.
 

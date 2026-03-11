@@ -1,6 +1,6 @@
 ---
 name: azure-pipelines
-description: Use when validating Azure DevOps pipeline changes for the VS Code build. Covers queueing builds, checking build status, viewing logs, and iterating on pipeline YAML changes without waiting for full CI runs.
+description: Use when validating Azure DevOps pipeline changes for the Atlas build. Covers queueing builds, checking build status, viewing logs, and iterating on pipeline YAML changes without waiting for full CI runs.
 ---
 
 # Validating Azure Pipeline Changes
@@ -42,15 +42,15 @@ When modifying Azure DevOps pipeline files (YAML files in `build/azure-pipelines
    az devops configure --defaults organization=https://dev.azure.com/monacotools project=Monaco
    ```
 
-## VS Code Main Build
+## Atlas Main Build
 
-The main VS Code build pipeline:
+The main Atlas build pipeline:
 - **Organization**: `monacotools`
 - **Project**: `Monaco`
 - **Definition ID**: `111`
 - **URL**: https://dev.azure.com/monacotools/Monaco/_build?definitionId=111
 
-## VS Code Insider Scheduled Builds
+## Atlas Insider Scheduled Builds
 
 Two Insider builds run automatically on a scheduled basis:
 - **Morning build**: ~7:00 AM CET

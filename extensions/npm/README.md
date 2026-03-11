@@ -1,17 +1,17 @@
 # Node npm
 
-**Notice:** This extension is bundled with Visual Studio Code. It can be disabled but not uninstalled.
+**Notice:** This extension is bundled with Atlas. It can be disabled but not uninstalled.
 
 ## Features
 
 ### Task Running
 
-This extension supports running npm scripts defined in the `package.json` as [tasks](https://code.visualstudio.com/docs/editor/tasks). Scripts with the name 'build', 'compile', or 'watch'
+This extension supports running npm scripts defined in the `package.json` as [tasks](https://github.com/skywalkerx28/Atlas). Scripts with the name 'build', 'compile', or 'watch'
 are treated as build tasks.
 
 To run scripts as tasks, use the **Tasks** menu.
 
-For more information about auto detection of Tasks, see the [documentation](https://code.visualstudio.com/Docs/editor/tasks#_task-autodetection).
+For more information about auto detection of Tasks, see the [documentation](https://github.com/skywalkerx28/Atlas).
 
 ### Script Explorer
 

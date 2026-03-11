@@ -11,6 +11,7 @@ export const ATLAS_REMOVED_EXTENSIONS = new Set([
 	'github',
 	'github-authentication',
 	'microsoft-authentication',
+	'simple-browser',
 	'tunnel-forwarding',
 ]);
 

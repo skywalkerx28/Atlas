@@ -1,9 +1,9 @@
 ---
 name: accessibility
-description: Accessibility guidelines for VS Code features — covers accessibility help dialogs, accessible views, verbosity settings, accessibility signals, ARIA alerts/status announcements, keyboard navigation, and ARIA labels/roles. Applies to both new interactive UI surfaces and updates to existing features. Use when creating new UI or updating existing UI features.
+description: Accessibility guidelines for Atlas features — covers accessibility help dialogs, accessible views, verbosity settings, accessibility signals, ARIA alerts/status announcements, keyboard navigation, and ARIA labels/roles. Applies to both new interactive UI surfaces and updates to existing features. Use when creating new UI or updating existing UI features.
 ---
 
-When adding a **new interactive UI surface** to VS Code — a panel, view, widget, editor overlay, dialog, or any rich focusable component the user interacts with — you **must** provide three accessibility components (if they do not already exist for the feature):
+When adding a **new interactive UI surface** to Atlas — a panel, view, widget, editor overlay, dialog, or any rich focusable component the user interacts with — you **must** provide three accessibility components (if they do not already exist for the feature):
 
 1. **An Accessibility Help Dialog** — opened via the accessibility help keybinding when the feature has focus.
 2. **An Accessible View** — a plain-text read-only editor that presents the feature's content to screen reader users (when the feature displays non-trivial visual content).
@@ -236,7 +236,7 @@ Every interactive UI element must be fully operable via the keyboard.
 
 - **Tab order**: All interactive elements must be reachable via `Tab` / `Shift+Tab` in a logical order.
 - **Arrow key navigation**: Lists, trees, grids, and toolbars must support arrow key navigation following WAI-ARIA patterns.
-- **Focus visibility**: Focused elements must have a visible focus indicator (VS Code's theme system provides this via `focusBorder`).
+- **Focus visibility**: Focused elements must have a visible focus indicator (Atlas's theme system provides this via `focusBorder`).
 - **No mouse-only interactions**: Every action reachable by click or hover must also be reachable via keyboard (context menus, buttons, toggles, etc.).
 - **Escape to dismiss**: Overlays, dialogs, and popups must be dismissable with `Escape`, returning focus to the previous element.
 - **Focus trapping**: Modal dialogs must trap focus within the dialog until dismissed.

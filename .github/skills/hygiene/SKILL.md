@@ -1,11 +1,11 @@
 ---
 name: hygiene
-description: Use when making code changes to ensure they pass VS Code's hygiene checks. Covers the pre-commit hook, unicode restrictions, string quoting rules, copyright headers, indentation, formatting, ESLint, and stylelint. Run the hygiene check before declaring work complete.
+description: Use when making code changes to ensure they pass Atlas's hygiene checks. Covers the pre-commit hook, unicode restrictions, string quoting rules, copyright headers, indentation, formatting, ESLint, and stylelint. Run the hygiene check before declaring work complete.
 ---
 
 # Hygiene Checks
 
-VS Code runs a hygiene check as a git pre-commit hook. Commits will be rejected if hygiene fails.
+Atlas runs a hygiene check as a git pre-commit hook. Commits will be rejected if hygiene fails.
 
 ## Running the hygiene check
 

@@ -1,4 +1,4 @@
-# Copilot Agent Runtime — Customization Surface Spec
+# Agent Runtime — Customization Surface Spec
 
 > **Purpose:** Definitive reference for every customization mechanism that affects agent behavior when a user sends a message. Intended for building a UI that collects all customizations into a single view.
 >

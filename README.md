@@ -1,72 +1,91 @@
 # Atlas
+
 [![Issues](https://img.shields.io/github/issues/skywalkerx28/Atlas.svg)](https://github.com/skywalkerx28/Atlas/issues)
 
-## The Repository
+## What is Atlas?
 
-Atlas is an agent-centric development environment built from the Code - OSS codebase and pushed toward a separate product direction. This repository now houses Atlas-specific product, build, and UX work under the standard [MIT license](https://github.com/skywalkerx28/Atlas/blob/main/LICENSE.txt).
+Atlas is an agent-centric development environment for the Software 3.0 era. Built from the Code - OSS codebase, Atlas is evolving into a **factory management system** for orchestrating swarms of AI agents across the entire software development lifecycle.
 
-## Atlas
+Atlas is not primarily a code editor. It is a command center where software engineers observe, direct, and manage fleets of autonomous agents working in parallel on long-standing tasks — from planning and implementation through review, testing, and deployment.
 
-<p align="center">
-  <img alt="Atlas in action" src="https://user-images.githubusercontent.com/35271042/118224532-3842c400-b438-11eb-923d-a5f66fa6785a.png">
-</p>
+### Vision
 
-Atlas keeps the editor and workbench foundation from Code - OSS, but it is no longer targeting Visual Studio Code product parity. The current cleanup removes Microsoft, GitHub Copilot, marketplace, and remote-product assumptions so Atlas can evolve as its own platform.
+The future of software development is agent-first. Hundreds of agents will work concurrently under enterprise harnesses, tackling tasks independently over longer timescales with less human direction. Atlas is the IDE that surfaces this new reality:
+
+- **Fleet Dashboard** — Real-time view of all active agents, their roles, tasks, status, and cost
+- **Objective Pipeline** — Manage the flow of work from high-level product intent through agent-executable subtasks
+- **Agent Inspector** — Deep dive into any agent's conversation, worktree, diffs, and output
+- **Review Station** — Aggregated view of pending reviews, judge decisions, and merge queue
+- **Cost & Health Monitor** — Budget utilization, circuit breakers, and system health
+
+### Architecture
+
+Atlas extends the VS Code layered architecture with a dedicated **Agent Sessions Window** (`src/vs/sessions/`), a specialized workbench optimized for agent session workflows with a simplified, chat-first UX.
+
+```
+vs/base          <- Foundation utilities
+vs/platform      <- Platform services
+vs/editor        <- Text editor core
+vs/workbench     <- Standard workbench
+vs/sessions      <- Agent sessions window (this layer)
+```
+
+The sessions layer sits alongside `vs/workbench` and may import from it, but not vice versa. See [src/vs/sessions/README.md](src/vs/sessions/README.md) for the detailed architecture and [src/vs/sessions/LAYOUT.md](src/vs/sessions/LAYOUT.md) for the layout specification.
+
+## Getting Started
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org) (see `.nvmrc` for the required version)
+- [Yarn](https://yarnpkg.com/) or npm
+- Python (for native module compilation)
+- Platform-specific build tools (see below)
+
+### Build from Source
+
+```bash
+git clone https://github.com/skywalkerx28/Atlas.git
+cd Atlas
+npm install
+npm run compile
+```
+
+### Run in Development
+
+```bash
+bash scripts/code.sh
+```
+
+### Development Container
+
+This repository includes a Dev Container configuration for working in an isolated environment. See [.devcontainer/README.md](.devcontainer/README.md) for setup instructions.
+
+## Repository Structure
+
+```
+src/              Main TypeScript source code
+  vs/base/        Foundation utilities and cross-platform abstractions
+  vs/platform/    Platform services and dependency injection
+  vs/editor/      Text editor implementation
+  vs/workbench/   Main application workbench
+  vs/sessions/    Agent sessions window (agent-first workbench)
+  vs/code/        Electron main process
+  vs/server/      Server implementation
+build/            Build scripts and CI/CD tools
+extensions/       Built-in extensions
+test/             Integration tests
+scripts/          Development and build scripts
+resources/        Static resources (icons, themes, packaging)
+```
 
 ## Contributing
 
-There are many ways in which you can participate in this project, for example:
-
-* [Submit bugs and feature requests](https://github.com/microsoft/vscode/issues), and help us verify as they are checked in
-* Review [source code changes](https://github.com/microsoft/vscode/pulls)
-* Review the [documentation](https://github.com/microsoft/vscode-docs) and make pull requests for anything from typos to additional and new content
-
-If you are interested in fixing issues and contributing directly to the code base,
-please see the document [How to Contribute](https://github.com/microsoft/vscode/wiki/How-to-Contribute), which covers the following:
-
-* [How to build and run from source](https://github.com/microsoft/vscode/wiki/How-to-Contribute)
-* [The development workflow, including debugging and running tests](https://github.com/microsoft/vscode/wiki/How-to-Contribute#debugging)
-* [Coding guidelines](https://github.com/microsoft/vscode/wiki/Coding-Guidelines)
-* [Submitting pull requests](https://github.com/microsoft/vscode/wiki/How-to-Contribute#pull-requests)
-* [Finding an issue to work on](https://github.com/microsoft/vscode/wiki/How-to-Contribute#where-to-contribute)
-* [Contributing to translations](https://aka.ms/vscodeloc)
-
-## Feedback
-
-* Ask a question on [Stack Overflow](https://stackoverflow.com/questions/tagged/vscode)
-* [Request a new feature](CONTRIBUTING.md)
-* Upvote [popular feature requests](https://github.com/microsoft/vscode/issues?q=is%3Aopen+is%3Aissue+label%3Afeature-request+sort%3Areactions-%2B1-desc)
-* [File an issue](https://github.com/microsoft/vscode/issues)
-* Connect with the extension author community on [GitHub Discussions](https://github.com/microsoft/vscode-discussions/discussions) or [Slack](https://aka.ms/vscode-dev-community)
-* Follow [@code](https://x.com/code) and let us know what you think!
-
-See our [wiki](https://github.com/microsoft/vscode/wiki/Feedback-Channels) for a description of each of these channels and information on some other available community-driven channels.
-
-## Related Projects
-
-Many of the core components and extensions to VS Code live in their own repositories on GitHub. For example, the [node debug adapter](https://github.com/microsoft/vscode-node-debug) and the [mono debug adapter](https://github.com/microsoft/vscode-mono-debug) repositories are separate from each other. For a complete list, please visit the [Related Projects](https://github.com/microsoft/vscode/wiki/Related-Projects) page on our [wiki](https://github.com/microsoft/vscode/wiki).
-
-## Bundled Extensions
-
-VS Code includes a set of built-in extensions located in the [extensions](extensions) folder, including grammars and snippets for many languages. Extensions that provide rich language support (inline suggestions, Go to Definition) for a language have the suffix `language-features`. For example, the `json` extension provides coloring for `JSON` and the `json-language-features` extension provides rich language support for `JSON`.
-
-## Development Container
-
-This repository includes a Visual Studio Code Dev Containers / GitHub Codespaces development container.
-
-* For [Dev Containers](https://aka.ms/vscode-remote/download/containers), use the **Dev Containers: Clone Repository in Container Volume...** command which creates a Docker volume for better disk I/O on macOS and Windows.
-  * If you already have VS Code and Docker installed, you can also click [here](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/microsoft/vscode) to get started. This will cause VS Code to automatically install the Dev Containers extension if needed, clone the source code into a container volume, and spin up a dev container for use.
-
-* For Codespaces, install the [GitHub Codespaces](https://marketplace.visualstudio.com/items?itemName=GitHub.codespaces) extension in VS Code, and use the **Codespaces: Create New Codespace** command.
-
-Docker / the Codespace should have at least **4 Cores and 6 GB of RAM (8 GB recommended)** to run a full build. See the [development container README](.devcontainer/README.md) for more information.
-
-## Code of Conduct
-
-This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/). For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute to Atlas.
 
 ## License
 
-Copyright (c) Microsoft Corporation. All rights reserved.
+Copyright (c) Atlas Contributors. All rights reserved.
 
 Licensed under the [MIT](LICENSE.txt) license.
+
+This project is derived from [Code - OSS](https://github.com/microsoft/vscode) by Microsoft Corporation, also licensed under MIT.

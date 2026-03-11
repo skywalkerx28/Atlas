@@ -26,7 +26,7 @@ Custom rules are defined in the `.eslint-plugin-local` folder. Each rule is defi
 
 These rules are then enabled in the `eslint.config.js` file. This is the main eslint configuration for our repo. It defines a set of file scopes which rules should apply to files in those scopes.
 
-For example, here's a configuration that enables the no `test.only` rule in all `*.test.ts` files in the VS Code repo:
+For example, here's a configuration that enables the no `test.only` rule in all `*.test.ts` files in the Atlas repo:
 
 ```ts
 {
@@ -120,6 +120,6 @@ To add a fix for a custom rule:
 
 2. When reporting an error in the rule, also include a `fix`. This is a function that takes a `fixer` argument and returns one or more fixes.
 
-See the [Double quoted to single quoted string covert fix](https://github.com/microsoft/vscode/blob/b074375e1884ae01033967bf0bbceeaa4795354a/.eslint-plugin-local/code-no-unexternalized-strings.ts#L128) for an example. The ESLint docs also have [details on adding fixes and the fixer api](https://eslint.org/docs/latest/extend/custom-rules#applying-fixes)
+See the [Double quoted to single quoted string covert fix](https://github.com/skywalkerx28/Atlas/blob/b074375e1884ae01033967bf0bbceeaa4795354a/.eslint-plugin-local/code-no-unexternalized-strings.ts#L128) for an example. The ESLint docs also have [details on adding fixes and the fixer api](https://eslint.org/docs/latest/extend/custom-rules#applying-fixes)
 
-The fixes can be run using `npx eslint --fix` in the VS Code repo
+The fixes can be run using `npx eslint --fix` in the Atlas repo

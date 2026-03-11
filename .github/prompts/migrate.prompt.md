@@ -16,7 +16,7 @@ tools:
 
 # Issue Migration Prompt
 
-Use this prompt when migrating issues from one GitHub repository to another (e.g., from `microsoft/vscode-copilot` to `microsoft/vscode`).
+Use this prompt when migrating issues from one GitHub repository to another (e.g., from `skywalkerx28/Atlas-extensions` to `skywalkerx28/Atlas`).
 
 ## Input Methods
 
@@ -27,7 +27,7 @@ You can specify which issues to migrate using **any** of these three methods:
 Provide a full GitHub issues search URL. **All matching issues will be migrated.**
 
 ```
-https://github.com/microsoft/vscode-copilot/issues?q=is%3Aissue+is%3Aopen+assignee%3Ayoyokrazy
+https://github.com/skywalkerx28/Atlas-extensions/issues?q=is%3Aissue+is%3Aopen+assignee%3Ayoyokrazy
 ```
 
 ### Option B: GitHub Search Query Parameters
@@ -35,7 +35,7 @@ https://github.com/microsoft/vscode-copilot/issues?q=is%3Aissue+is%3Aopen+assign
 Provide search query syntax for a specific repo. **All matching issues will be migrated.**
 
 ```
-repo:microsoft/vscode-copilot is:issue is:open assignee:yoyokrazy
+repo:skywalkerx28/Atlas-extensions is:issue is:open assignee:yoyokrazy
 ```
 
 Common query filters:
@@ -52,7 +52,7 @@ Common query filters:
 Provide a direct link to a single issue. **Only this issue will be migrated.**
 
 ```
-https://github.com/microsoft/vscode-copilot/issues/12345
+https://github.com/skywalkerx28/Atlas-extensions/issues/12345
 ```
 
 ## Task
@@ -109,8 +109,8 @@ This applies to:
 
 **Convert ALL `#NUMBER` references to full URLs:**
 
-✅ Correct: `https://github.com/microsoft/vscode-copilot/issues/12345`
-✅ Also OK: `microsoft/vscode-copilot#12345`
+✅ Correct: `https://github.com/skywalkerx28/Atlas-extensions/issues/12345`
+✅ Also OK: `skywalkerx28/Atlas-extensions#12345`
 ❌ Wrong: `#12345` (will link to wrong repo)
 
 This applies to:
@@ -141,38 +141,38 @@ After creating the new issue and all comments:
 
 ## Example Transformation
 
-### Original Issue Body (in `microsoft/vscode-copilot`):
+### Original Issue Body (in `skywalkerx28/Atlas-extensions`):
 
 ```markdown
 I noticed @johndoe had a similar issue in #9999. cc @janedoe for visibility.
 
-Related to #8888 and microsoft/vscode#12345.
+Related to #8888 and skywalkerx28/Atlas#12345.
 
 Steps to reproduce:
 
-1. Open VS Code
+1. Open Atlas
 2. ...
 ```
 
-### Migrated Issue Body (in `microsoft/vscode`):
+### Migrated Issue Body (in `skywalkerx28/Atlas`):
 
 ```markdown
-_Transferred from microsoft/vscode-copilot#12345_
+_Transferred from skywalkerx28/Atlas-extensions#12345_
 _Original author: `@originalauthor`_
 
 ---
 
-I noticed `@johndoe` had a similar issue in https://github.com/microsoft/vscode-copilot/issues/9999. cc `@janedoe` for visibility.
+I noticed `@johndoe` had a similar issue in https://github.com/skywalkerx28/Atlas-extensions/issues/9999. cc `@janedoe` for visibility.
 
-Related to https://github.com/microsoft/vscode-copilot/issues/8888 and microsoft/vscode#12345.
+Related to https://github.com/skywalkerx28/Atlas-extensions/issues/8888 and skywalkerx28/Atlas#12345.
 
 Steps to reproduce:
 
-1. Open VS Code
+1. Open Atlas
 2. ...
 ```
 
-Note: The `microsoft/vscode#12345` reference was already a cross-repo link, so it stays unchanged.
+Note: The `skywalkerx28/Atlas#12345` reference was already a cross-repo link, so it stays unchanged.
 
 ## Checklist Before Migration
 

@@ -1411,6 +1411,12 @@ var
 	WaitCounter: Integer;
 	TaskKilled: Integer;
 begin
+	if ExpandConstant('{#TunnelApplicationName}') = '' then
+	begin
+		Result := True;
+		exit;
+	end;
+
 	Log('Stopping all tunnel services (at ' + ExpandConstant('"{app}\bin\{#TunnelApplicationName}.exe"') + ')');
 	ShellExec('', 'powershell.exe', '-NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -Command "Get-WmiObject Win32_Process | Where-Object { $_.ExecutablePath -eq ' + ExpandConstant('''{app}\bin\{#TunnelApplicationName}.exe''') + ' } | Select @{Name=''Id''; Expression={$_.ProcessId}} | Stop-Process -Force"', '', SW_HIDE, ewWaitUntilTerminated, TaskKilled)
 
@@ -1437,6 +1443,9 @@ var
 	WaitCounter: Integer;
 begin
   ShouldRestartTunnelService := False;
+	if ExpandConstant('{#TunnelApplicationName}') = '' then
+		exit;
+
  	if CheckForMutexes('{#TunnelServiceMutex}') then begin
 		// stop the tunnel service
 		Log('Stopping the tunnel service using ' + ExpandConstant('"{app}\bin\{#ApplicationName}.cmd"'));

@@ -6,7 +6,7 @@ This document describes the AI customization experience: a management editor and
 
 ### File Structure
 
-The management editor lives in `vs/workbench` (shared between core VS Code and sessions):
+The management editor lives in `vs/workbench` (shared between core workbench and sessions):
 
 ```
 src/vs/workbench/contrib/chat/browser/aiCustomization/
@@ -16,7 +16,7 @@ src/vs/workbench/contrib/chat/browser/aiCustomization/
 ├── aiCustomizationManagementEditorInput.ts     # Singleton input
 ├── aiCustomizationListWidget.ts                # Search + grouped list
 ├── aiCustomizationDebugPanel.ts                # Debug diagnostics panel
-├── aiCustomizationWorkspaceService.ts          # Core VS Code workspace service impl
+├── aiCustomizationWorkspaceService.ts          # Core workbench workspace service impl
 ├── customizationCreatorService.ts              # AI-guided creation flow
 ├── mcpListWidget.ts                            # MCP servers section
 ├── aiCustomizationIcons.ts                     # Icons
@@ -54,7 +54,7 @@ src/vs/sessions/contrib/sessions/browser/
 
 The `IAICustomizationWorkspaceService` interface controls per-window behavior:
 
-| Property / Method | Core VS Code | Sessions Window |
+| Property / Method | Core Workbench | Sessions Window |
 |----------|-------------|----------|
 | `managementSections` | All sections except Models | Same minus MCP |
 | `getStorageSourceFilter(type)` | All sources, no user root filter | Per-type (see below) |
@@ -83,7 +83,7 @@ The shared `applyStorageSourceFilter()` helper applies this filter to any `{uri,
 | Prompts | `[local, user]` | `undefined` (all roots) |
 | Agents, Skills, Instructions | `[local, user]` | `[~/.copilot, ~/.claude, ~/.agents]` |
 
-**Core VS Code:** All types use `[local, user, extension, plugin]` with no user root filter.
+**Core workbench:** All types use `[local, user, extension, plugin]` with no user root filter.
 
 ### AgenticPromptsService (Sessions)
 
@@ -92,7 +92,7 @@ Sessions overrides `PromptsService` via `AgenticPromptsService` (in `promptsServ
 - **Discovery**: `AgenticPromptFilesLocator` scopes workspace folders to the active session's worktree
 - **Built-in prompts**: Discovers bundled `.prompt.md` files from `vs/sessions/prompts/` and surfaces them with `PromptsStorage.builtin` storage type
 - **User override**: Built-in prompts are omitted when a user or workspace prompt with the same name exists
-- **Creation targets**: `getSourceFolders()` override replaces VS Code profile user roots with `~/.copilot/{subfolder}` for CLI compatibility
+- **Creation targets**: `getSourceFolders()` override replaces standard profile user roots with `~/.copilot/{subfolder}` for CLI compatibility
 - **Hook folders**: Falls back to `.github/hooks` in the active worktree
 
 ### Built-in Prompts

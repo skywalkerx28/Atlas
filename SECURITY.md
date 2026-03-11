@@ -1,14 +1,16 @@
-<!-- BEGIN MICROSOFT SECURITY.MD V1.0.0 BLOCK -->
-
 ## Security
 
-Microsoft takes the security of our software products and services seriously, which
-includes all source code repositories in our GitHub organizations.
+The Atlas team takes the security of our software seriously.
 
 **Please do not report security vulnerabilities through public GitHub issues.**
 
-For security reporting information, locations, contact information, and policies,
-please review the latest guidance for Microsoft repositories at
-[https://aka.ms/SECURITY.md](https://aka.ms/SECURITY.md).
+Instead, please report them responsibly by emailing the maintainers or opening a private security advisory via [GitHub Security Advisories](https://github.com/skywalkerx28/Atlas/security/advisories/new).
 
-<!-- END MICROSOFT SECURITY.MD BLOCK -->
+Please include:
+
+- Description of the vulnerability
+- Steps to reproduce
+- Potential impact
+- Suggested fix (if any)
+
+We will acknowledge receipt within 48 hours and provide a timeline for resolution.

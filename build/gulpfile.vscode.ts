@@ -26,7 +26,7 @@ import * as crypto from 'crypto';
 import * as i18n from './lib/i18n.ts';
 import { getProductionDependencies } from './lib/dependencies.ts';
 import { config } from './lib/electron.ts';
-import { ATLAS_COPYRIGHT_HOLDER, ATLAS_COPYRIGHT_NOTICE, isAtlasRemovedExtensionName } from './lib/atlasProduct.ts';
+import { ATLAS_COPYRIGHT_HOLDER, ATLAS_COPYRIGHT_NOTICE, ATLAS_REMOVED_EXTENSIONS, isAtlasRemovedExtensionName } from './lib/atlasProduct.ts';
 import { createAsar } from './lib/asar.ts';
 import minimist from 'minimist';
 import { compileBuildWithoutManglingTask, compileBuildWithManglingTask } from './gulpfile.compile.ts';
@@ -359,7 +359,7 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 					atlasRemovedExtensionExclusions.push(`!.build/extensions/${extensionName}/**`);
 				}
 			}
-			for (const extensionName of ['github', 'github-authentication', 'microsoft-authentication', 'simple-browser', 'tunnel-forwarding']) {
+			for (const extensionName of ATLAS_REMOVED_EXTENSIONS) {
 				atlasRemovedExtensionExclusions.push(`!.build/extensions/${extensionName}/**`);
 			}
 			const extensions = gulp.src(atlasRemovedExtensionExclusions, { base: '.build', dot: true });

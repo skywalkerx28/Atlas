@@ -1,7 +1,7 @@
 {
 	"name": "vscode-extras",
 	"displayName": "VS Code Extras",
-	"description": "Extra utility features for the VS Code selfhost workspace",
+	"description": "Extra utility features for the Atlas selfhost workspace",
 	"engines": {
 		"vscode": "^1.88.0"
 	},

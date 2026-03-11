@@ -5,7 +5,7 @@ applyTo: src/vs/sessions/**
 
 # Agent Sessions Window
 
-The Agent Sessions window is a **standalone application** built as a new top-level layer (`vs/sessions`) in the VS Code architecture. It provides a sessions-first experience optimized for agent workflows — a simplified, fixed-layout workbench where chat is the primary interaction surface and editors appear as modal overlays.
+The Agent Sessions window is a **standalone application** built as a new top-level layer (`vs/sessions`) in the Atlas architecture. It provides a sessions-first experience optimized for agent workflows — a simplified, fixed-layout workbench where chat is the primary interaction surface and editors appear as modal overlays.
 
 When working on files under `src/vs/sessions/`, use these skills for detailed guidance:
 

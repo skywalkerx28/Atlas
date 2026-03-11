@@ -159,7 +159,6 @@ import './contrib/sessions/browser/sessions.contribution.js';
 import './contrib/sessions/browser/customizationsToolbar.contribution.js';
 import './contrib/changes/browser/changesView.contribution.js';
 import './contrib/codeReview/browser/codeReview.contributions.js';
-import './contrib/github/browser/github.contribution.js';
 import './contrib/fileTreeView/browser/fileTreeView.contribution.js';
 import './contrib/configuration/browser/configuration.contribution.js';
 import './contrib/welcome/browser/welcome.contribution.js';
