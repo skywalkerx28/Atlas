@@ -12,6 +12,7 @@ import { ILogService } from '../../../../platform/log/common/log.js';
 import {
 	HARNESS_JSONRPC_VERSION,
 	HARNESS_PROTOCOL_VERSION,
+	HARNESS_REQUIRED_DAEMON_METHODS,
 	HARNESS_SCHEMA_VERSION,
 	type HarnessDaemonRequestMethod,
 	type HarnessRequestParams,
@@ -20,7 +21,7 @@ import {
 	type IHarnessDaemonResponse,
 	type IHarnessJsonRpcError,
 } from '../common/harnessProtocol.js';
-import type { HarnessCapability, IHarnessInitializeParams, IHarnessInitializeResult } from '../common/harnessTypes.js';
+import type { HarnessCapability, IHarnessInitializeParams, IHarnessInitializeResult, IPingResult } from '../common/harnessTypes.js';
 
 const DEFAULT_CONNECT_TIMEOUT_MS = 5_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 5_000;
@@ -111,6 +112,8 @@ export class HarnessDaemonClient extends Disposable {
 			this.validateInitializeResult(result);
 			this._initializeResult = result;
 			this.maxFrameBytes = result.limits.max_message_bytes;
+			const ping = await this.request('daemon.ping', {}, timeoutMs);
+			this.validatePingResult(ping);
 			return result;
 		} catch (error) {
 			this.failConnection(asError(error));
@@ -337,7 +340,7 @@ export class HarnessDaemonClient extends Disposable {
 			throw new HarnessDaemonProtocolError('Harness daemon initialize response is missing supported_methods.');
 		}
 
-		for (const requiredMethod of ['shutdown', 'fleet.snapshot', 'fleet.subscribe', 'fleet.unsubscribe'] as const) {
+		for (const requiredMethod of HARNESS_REQUIRED_DAEMON_METHODS) {
 			if (!result.supported_methods.includes(requiredMethod)) {
 				throw new HarnessDaemonProtocolError(`Harness daemon initialize response is missing required method '${requiredMethod}'.`);
 			}
@@ -345,6 +348,18 @@ export class HarnessDaemonClient extends Disposable {
 
 		if (!result.limits || result.limits.max_message_bytes <= 0) {
 			throw new HarnessDaemonProtocolError('Harness daemon initialize response is missing valid limits.');
+		}
+	}
+
+	private validatePingResult(result: IPingResult): void {
+		if (!Number.isFinite(result.uptime_ms) || result.uptime_ms < 0) {
+			throw new HarnessDaemonProtocolError('Harness daemon ping response is missing a valid uptime_ms.');
+		}
+		if (!Number.isInteger(result.active_clients) || result.active_clients < 0) {
+			throw new HarnessDaemonProtocolError('Harness daemon ping response is missing a valid active_clients count.');
+		}
+		if (result.schema_version !== HARNESS_SCHEMA_VERSION) {
+			throw new HarnessDaemonProtocolError(`Harness daemon ping schema mismatch: expected ${HARNESS_SCHEMA_VERSION}, got ${result.schema_version}.`);
 		}
 	}
 

@@ -433,7 +433,7 @@ The age of the minimalist editor is over. Agents expand the conscious limits for
 ### Phase 1: Vocabulary and State Model
 Lock the product vocabulary. Define TypeScript interfaces for every first-class noun (Requirement, Blueprint, Objective, Task, Agent, Worktree, Run, Artifact, Review, Policy, MergeLane, Deployment, Incident). These become the shared type system that every surface consumes.
 
-Build the **harness bridge service** (`IHarnessService`) — the IPC layer that reads from axiom-harness CLI output, SQLite state, and JSONL event streams and exposes it as observable state to the workbench.
+Build the **harness bridge service** (`IHarnessService`) — the IPC layer that connects to the harness daemon over JSON-RPC, falls back to read-only SQLite polling when the daemon is absent, and exposes that state to the workbench. CLI subprocess writes and JSONL tailing are not part of the merged bridge contract.
 
 ### Phase 2: Navigation Rewrite
 Replace explorer-first navigation with the full left rail: Requirements, Blueprints, Objectives, Tasks, Agents, Reviews, Artifacts, Merges, Deployments, Fleet, Ops.

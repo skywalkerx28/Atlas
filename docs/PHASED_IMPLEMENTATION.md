@@ -675,7 +675,7 @@ export const enum HarnessConnectionState {
 export interface IHarnessConnectionInfo {
 	readonly state: HarnessConnectionState;
 	readonly mode: 'daemon' | 'polling' | 'none';
-	readonly writesEnabled: boolean;   // Wave A: false in all modes until daemon write families exist
+	readonly writesEnabled: boolean;   // Wave A / Wave B: false in all modes until daemon write families exist
 	readonly daemonVersion: string | undefined;
 	readonly schemaVersion: string | undefined;
 	readonly grantedCapabilities: readonly string[];
@@ -1042,7 +1042,7 @@ The daemon runs alongside the pool loop — same process or separate, both work 
 
 ### Objective
 
-Connect Atlas to the harness daemon. The bridge is the TypeScript client that speaks JSON-RPC 2.0 over the Unix socket and exposes all data as observables conforming to the `IHarnessService` interface from Phase 0b.
+Connect Atlas to the harness daemon. The bridge is the TypeScript client that speaks JSON-RPC 2.0 over the Unix socket and exposes harness state as observables conforming to the `IHarnessService` interface from Phase 0b.
 
 ### Prerequisites
 
@@ -1060,7 +1060,7 @@ src/vs/sessions/services/harness/
 │   ├── harnessService.ts             Desktop implementation (daemon client + read-only polling fallback)
 │   ├── harnessDaemonClient.ts        Unix socket JSON-RPC client
 │   ├── harnessMapper.ts              Wire → presentation type mapping
-│   └── harnessSqlitePoller.ts        Read-only SQLite + JSONL polling (fallback — no writes)
+│   └── harnessSqlitePoller.ts        Read-only SQLite polling (fallback — no writes)
 └── browser/
     └── harnessService.ts             Stub: returns disconnected state
 ```
@@ -1137,6 +1137,8 @@ export function mapWireAgent(wire: IWireAgentState): IAgentState {
 
 **Wave A daemon scope is intentionally narrow.** The currently merged daemon surface only exposes `initialize`, `shutdown`, `daemon.ping`, `fleet.snapshot`, `fleet.subscribe`, and `fleet.unsubscribe`. Atlas therefore keeps `writesEnabled: false` even in daemon mode, subscribes only to fleet state, and leaves all unsupported read/write families empty or fail-closed.
 
+**Wave B on the current harness branch remains narrow too.** `streams.rs` contains internal topic classification for future families like `health`, `cost`, `review`, and `agent.activity:*`, but `session.rs` still does not expose public JSON-RPC subscribe/read methods for those families. Wave B can honestly consume `daemon.ping` as an additional post-initialize read check, but it still must not pretend that objectives, tasks, reviews, merge state, transcripts, or cost are daemon-backed yet.
+
 ```typescript
 // electron-browser/harnessService.ts
 
@@ -1160,7 +1162,8 @@ export class DesktopHarnessService extends Disposable implements IHarnessService
                 ...
             });
 
-            // Wave A subscribes only to fleet state the daemon actually exposes.
+            // Wave A / Wave B consume daemon.ping plus the fleet state the daemon actually exposes.
+            await this.daemonClient.request('daemon.ping', {});
             this.daemonClient.onNotification((method, params) => {
                 this.handleNotification(method, params);
             });

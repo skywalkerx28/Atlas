@@ -124,13 +124,15 @@ A swarm is not a brand-new backend object that replaces the harness. It is the U
 
 **New service**: `IHarnessService` in `sessions/services/harness/`
 
-This is the foundation. It connects to the harness daemon (or falls back to polling) and exposes all data as observables that every view consumes.
+This is the foundation. It connects to the harness daemon (or falls back to polling) and exposes harness state as observables that every view consumes.
 
 **New module**: `sessions/common/model/`
 
 TypeScript interfaces for the Atlas first-class nouns, mapping from harness wire types to Atlas presentation types.
 
-**Layering note**: The harness bridge is **desktop-only** (Phase 1). It requires either a Unix socket connection (daemon mode) or native file system access (SQLite + JSONL polling). The `browser/` layer gets a stub implementation that returns "not connected." Web support comes later via the daemon's optional WebSocket bridge.
+**Layering note**: The harness bridge is **desktop-only** (Phase 1). It requires either a Unix socket connection (daemon mode) or native file system access (read-only SQLite polling fallback). The `browser/` layer gets a stub implementation that returns "not connected." Web support comes later via the daemon's optional WebSocket bridge.
+
+Current merged scope note: the bridge does not yet populate every `IHarnessService` observable. On the current harness daemon branch, only the public fleet family is exposed over JSON-RPC, so Atlas currently populates fleet and derived health while leaving objectives, tasks, reviews, merge state, transcripts, memory, and worktree inspection empty/default until public daemon methods land.
 
 ```
 sessions/services/harness/
@@ -139,9 +141,9 @@ sessions/services/harness/
 │   ├── harnessTypes.ts            Wire format types (TaskPacket, ResultPacket, etc.)
 │   └── harnessProtocol.ts         JSON-RPC 2.0 message types for daemon protocol
 ├── electron-browser/
-│   ├── harnessService.ts          Desktop implementation (daemon client + SQLite fallback)
+│   ├── harnessService.ts          Desktop implementation (daemon client + read-only SQLite fallback)
 │   ├── harnessDaemonClient.ts     Unix socket JSON-RPC client
-│   └── harnessSqlitePoller.ts     Direct SQLite + JSONL polling (fallback)
+│   └── harnessSqlitePoller.ts     Read-only SQLite polling fallback
 └── browser/
     └── harnessService.ts          Stub: returns disconnected state (web not yet supported)
 

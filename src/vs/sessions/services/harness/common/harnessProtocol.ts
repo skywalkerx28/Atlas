@@ -23,6 +23,8 @@ export const HARNESS_SCHEMA_VERSION = '2026-03-01';
 export type HarnessJsonRpcId = number | string | null;
 export type HarnessClientRequestId = number;
 
+// Public JSON-RPC surface on the current harness branch. Internal stream classifications
+// in syntropic-daemon/streams.rs mention future topics, but they are not subscribable here yet.
 export type HarnessDaemonRequestMethod =
 	| 'initialize'
 	| 'shutdown'
@@ -34,6 +36,14 @@ export type HarnessDaemonRequestMethod =
 export type HarnessDaemonNotificationMethod =
 	| 'fleet.delta'
 	| 'daemon.resync_required';
+
+export const HARNESS_REQUIRED_DAEMON_METHODS: readonly HarnessDaemonRequestMethod[] = Object.freeze([
+	'shutdown',
+	'daemon.ping',
+	'fleet.snapshot',
+	'fleet.subscribe',
+	'fleet.unsubscribe',
+]);
 
 export interface IHarnessJsonRpcError {
 	readonly code: number;

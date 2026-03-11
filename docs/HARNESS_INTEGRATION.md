@@ -33,13 +33,15 @@ Atlas connects to the harness through **two modes**, with automatic fallback:
 
 ### Primary: Daemon Mode (Real-Time)
 
-The harness daemon (`axiom-harness serve`) is a long-running process that exposes a **JSON-RPC 2.0** protocol over a **Unix domain socket** (`~/.codex/harness.sock`). Atlas connects as a client with an `initialize` handshake (version negotiation, token auth, capability discovery), then subscribes to resumable notification streams with per-topic sequence numbers. See `syntropic-harness-fresh/docs/design/DAEMON_ARCHITECTURE.md` for the full specification including:
+The harness daemon (`axiom-harness serve`) is a long-running process that exposes a **JSON-RPC 2.0** protocol over a **Unix domain socket** (`~/.codex/harness.sock`). Atlas connects as a client with an `initialize` handshake (version negotiation, token auth, capability discovery), performs a post-initialize `daemon.ping` read check, and then subscribes only to the public notification streams the current daemon branch actually exposes. See `syntropic-harness-fresh/docs/design/DAEMON_ARCHITECTURE.md` for the broader target design including:
 
 - **Authentication**: Token-based client identity, per-method capability model, audit attribution on all writes
 - **Resumable streams**: Monotonic sequence numbers per topic, resume-from-seq on reconnect, `resync_required` for gap recovery
 - **Stream classification**: Coalescible topics (fleet, health, cost) vs. loss-intolerant topics (reviews, journal, transcripts, activity)
 - **Write delegation (future)**: once the daemon exposes write families, Atlas should route them through daemon methods such as `dispatch.submit`, `objective.submit`, and `event.emit` rather than bypassing harness validation
 - **Failure isolation**: Daemon and orchestrator run as independent tokio tasks with bounded queues and panic containment
+
+Important current-branch constraint: `streams.rs` already classifies future topics like `health`, `cost`, `review`, and `agent.activity:*`, but `session.rs` does not expose public subscribe methods for them yet. The current Atlas bridge must therefore treat those as internal daemon scaffolding, not as shipped API.
 
 ### Fallback: Read-Only Polling
 
@@ -62,7 +64,7 @@ Wave A Atlas ships **no write path**. In both daemon mode and polling mode:
 
 When later daemon method families exist, Atlas can delegate writes through the daemon only.
 
-Atlas implements this as `IHarnessService` — a singleton service in `sessions/services/harness/` that manages a connection to one harness workspace and exposes all data as observables. The service auto-detects whether the daemon socket is available and chooses the appropriate transport.
+Atlas implements this as `IHarnessService` — a singleton service in `sessions/services/harness/` that manages a connection to one harness workspace and exposes harness state as observables. On the current daemon branch, only fleet and derived health populate from daemon/polling reads; the other observables remain explicit empty/default surfaces until public daemon methods land.
 
 ### Swarm Model
 
@@ -415,7 +417,7 @@ Each dispatch has a checkpoint directory: `<harness_home>/.codex/orchestrator/ch
 | Tasks / Objectives / Reviews / Merge / Activity | — | — | — |
 | Any write action | — | — | Fail closed |
 
-Wave A only consumes the currently merged daemon surface: `initialize`, `shutdown`, `daemon.ping`, `fleet.snapshot`, `fleet.subscribe`, and `fleet.unsubscribe`. Later topic and write families remain future work.
+Wave A / Wave B on the current harness branch consume the same public daemon surface: `initialize`, `shutdown`, `daemon.ping`, `fleet.snapshot`, `fleet.subscribe`, and `fleet.unsubscribe`. `daemon.ping` is used as a post-initialize compatibility check, while fleet state still comes from `fleet.snapshot` / `fleet.delta`. Later topic and write families remain future work until the daemon exposes public methods for them.
 
 ### Fallback Mode (SQLite Polling)
 
