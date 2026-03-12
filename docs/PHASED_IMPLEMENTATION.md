@@ -1162,7 +1162,7 @@ export function mapWireAgent(wire: IWireAgentState): IAgentState {
 
 Atlas validates `initialize.fabric_identity.repo_root` against the opened workspace and fails closed on mismatch. `task.list` is treated as root-task anchors only, `task.tree` is the rooted lineage primitive, and Phase 3 now derives `IHarnessService.swarms` from that rooted state. Polling fallback remains intentionally narrow and read-only: it still only surfaces fleet and derived health from SQLite, because mirroring every daemon family locally would create a second privileged control plane.
 
-The daemon branch currently exposes a few additional read methods (`cost.get`, `agent.activity.get`, and `transcript.get`) that Atlas still leaves intentionally unimplemented in Wave D. Those remain explicit empty/default surfaces until the next bridge wave adopts them truthfully.
+The daemon branch already exposes additional read methods beyond the current Atlas bridge adoption, including `cost.get`, `agent.activity.get`, `transcript.get`, `task.subscribe`, `task.unsubscribe`, `memory.get`, `memory.list`, `result.get`, and `worktree.get`. Atlas still leaves those surfaces intentionally unimplemented in Wave D, so they remain explicit empty/default product surfaces until the next bridge wave adopts them truthfully.
 
 Atlas now delegates only the shipped daemon write subset:
 

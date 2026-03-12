@@ -34,6 +34,7 @@
 - Atlas `IWireDispatchCommand.task_id` is still optional at the model layer, but daemon-backed `dispatch.submit` currently requires it. The service now rejects missing `task_id` fail-closed.
 - Atlas `skip_gates` exists on the logical dispatch command, but the current daemon `dispatch.submit` surface does not honor it. The service rejects `skip_gates: true` fail-closed instead of pretending it worked.
 - `event.emit` is now typed in the protocol/client surface because the daemon ships it, but Atlas still has no truthful bridge caller for it in this wave.
+- The daemon already exposes additional read families (`task.subscribe`, `task.unsubscribe`, `memory.get`, `memory.list`, `result.get`, `worktree.get`, `cost.get`, `agent.activity.get`, `transcript.get`) that Atlas still does not consume in this wave.
 
 ### Tests added or updated
 
@@ -49,7 +50,7 @@
 - `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run compile-check-ts-native`: failed only on pre-existing unrelated noise in `src/vs/server/node/webClientServer.ts`
   - `src/vs/server/node/webClientServer.ts(17,84)` `TS6133` `builtinExtensionsPath`
   - `src/vs/server/node/webClientServer.ts(29,10)` `TS6133` `IExtensionManifest`
-- `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run test-node -- --runGlob "vs/sessions/services/harness/test/node/*.test.js"`: passed (`29 passing`)
+- `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run test-node -- --runGlob "vs/sessions/services/harness/test/node/*.test.js"`: passed (`31 passing`)
 
 ## Phase 5
 

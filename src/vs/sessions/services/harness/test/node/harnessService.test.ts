@@ -637,6 +637,75 @@ suite('HarnessService', () => {
 		}
 	});
 
+	test('submitDispatch fails closed when command.task_id is missing', async () => {
+		const fixture = await createDaemonFixture();
+		const server = await startMockHarnessDaemon({
+			socketPath: fixture.socketPath,
+			initializeResult: createWriteEnabledInitializeResult({
+				granted_capabilities: Object.freeze(['read', 'dispatch'] as const),
+				supportedWriteMethods: Object.freeze(['dispatch.submit'] as const),
+				fabric_identity: fixture.fabricIdentity,
+			}),
+			objectiveListResult: createObjectiveListResult({ objectives: Object.freeze([]) }),
+			reviewListResult: createReviewListResult({ reviews: Object.freeze([]) }),
+			mergeListResult: createMergeListResult({ entries: Object.freeze([]) }),
+			taskListResult: createTaskListResult({ roots: Object.freeze([]) }),
+			taskTreeResult: createTaskTreeResult({ nodes: Object.freeze([]) }),
+		});
+		const service = disposables.add(createDesktopHarnessService(fixture.homeRoot));
+		try {
+			await service.connect(URI.file(fixture.workspaceRoot));
+			await assert.rejects(
+				() => service.submitDispatch({
+					role_id: 'axiom-worker',
+					message: 'Missing task id should fail closed.',
+					skip_gates: false,
+				}),
+				errorMessage('Current harness daemon dispatch.submit requires command.task_id.'),
+			);
+			assert.strictEqual(server.requests.some(request => request.method === 'dispatch.submit'), false);
+		} finally {
+			await service.disconnect();
+			await server.dispose();
+			await fixture.dispose();
+		}
+	});
+
+	test('submitDispatch fails closed when skip_gates is requested', async () => {
+		const fixture = await createDaemonFixture();
+		const server = await startMockHarnessDaemon({
+			socketPath: fixture.socketPath,
+			initializeResult: createWriteEnabledInitializeResult({
+				granted_capabilities: Object.freeze(['read', 'dispatch'] as const),
+				supportedWriteMethods: Object.freeze(['dispatch.submit'] as const),
+				fabric_identity: fixture.fabricIdentity,
+			}),
+			objectiveListResult: createObjectiveListResult({ objectives: Object.freeze([]) }),
+			reviewListResult: createReviewListResult({ reviews: Object.freeze([]) }),
+			mergeListResult: createMergeListResult({ entries: Object.freeze([]) }),
+			taskListResult: createTaskListResult({ roots: Object.freeze([]) }),
+			taskTreeResult: createTaskTreeResult({ nodes: Object.freeze([]) }),
+		});
+		const service = disposables.add(createDesktopHarnessService(fixture.homeRoot));
+		try {
+			await service.connect(URI.file(fixture.workspaceRoot));
+			await assert.rejects(
+				() => service.submitDispatch({
+					role_id: 'axiom-worker',
+					task_id: 'TASK-ROOT-1',
+					message: 'skip_gates should fail closed.',
+					skip_gates: true,
+				}),
+				errorMessage('Current harness daemon dispatch.submit does not honor skip_gates requests.'),
+			);
+			assert.strictEqual(server.requests.some(request => request.method === 'dispatch.submit'), false);
+		} finally {
+			await service.disconnect();
+			await server.dispose();
+			await fixture.dispose();
+		}
+	});
+
 	test('daemon write methods fail closed when the daemon does not grant required capability', async () => {
 		const fixture = await createDaemonFixture();
 		const server = await startMockHarnessDaemon({

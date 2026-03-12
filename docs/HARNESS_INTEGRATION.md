@@ -56,7 +56,7 @@ Current merged daemon surface: the daemon now exposes these public methods:
 - `agent.activity.get`
 - `transcript.get`
 
-Wave D Atlas consumes the first five families plus `task.get` / `task.list` / `task.tree`, truthfully adopts the shipped daemon write subset (`control.pause`, `control.cancel`, `dispatch.submit`, `objective.submit`, `review.gate_verdict`, `review.authorize_promotion`, `review.enqueue_merge`), and still leaves `cost.get`, `agent.activity.get`, and `transcript.get` as empty/default surfaces for a later bridge wave. Atlas must still treat everything outside that list as unsupported. In particular, there is still no public `task.subscribe`, no public memory/worktree inspection stream, and no public support yet for `control.resume` or `control.steer`.
+Wave D Atlas consumes the first five families plus `task.get` / `task.list` / `task.tree`, truthfully adopts the shipped daemon write subset (`control.pause`, `control.cancel`, `dispatch.submit`, `objective.submit`, `review.gate_verdict`, `review.authorize_promotion`, `review.enqueue_merge`), and still leaves newer daemon read families such as `task.subscribe`, `memory.get`, `memory.list`, `result.get`, `worktree.get`, `cost.get`, `agent.activity.get`, and `transcript.get` unconsumed for a later bridge wave. Atlas must still treat everything it does not currently map as unsupported in the product surface. Public daemon support still does not exist yet for `control.resume` or `control.steer`.
 
 ### Fallback: Read-Only Polling
 
