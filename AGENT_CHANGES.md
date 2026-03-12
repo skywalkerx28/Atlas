@@ -1,5 +1,88 @@
 # Agent Changes
 
+## Phase 2 Wave C
+
+### What landed
+
+- Expanded the desktop harness bridge to consume the current daemon read surface instead of the older fleet-only bridge contract.
+- `HarnessDaemonClient` now requires `initialize.fabric_identity`, surfaces it to the desktop service, and forwards the new public notification families: `health.update`, `objective.update`, `review.update`, and `merge.update`.
+- `HarnessService` now validates daemon/workspace affinity against `fabric_identity.repo_root` and fails closed on cross-project mismatch instead of silently attaching Atlas to the wrong harness fabric.
+- Daemon mode now populates:
+  - fleet from `fleet.snapshot` / `fleet.delta`
+  - health from `health.get` / `health.update`
+  - objectives from `objective.list` / `objective.get` / `objective.update`
+  - review gates from `review.list` / `review.get` / `review.update`
+  - merge queue from `merge.list` / `merge.get` / `merge.update`
+  - rooted task lineage from `task.list`, `task.tree`, and `task.get`
+- `task.list` is kept root-only in semantics. Atlas expands each root with `task.tree` and stores that rooted lineage primitive for Phase 3, but does not derive swarms yet.
+- Polling fallback stays narrow and read-only. It still surfaces only fleet and derived health from SQLite; there is no polling mirror for objectives, reviews, merge state, or rooted task lineage.
+- Added focused Wave C node tests for fabric-identity validation, new daemon read families, notification handling, and rooted task mapping.
+
+### Tests added or updated
+
+- `src/vs/sessions/services/harness/test/node/harnessTestUtils.ts`
+- `src/vs/sessions/services/harness/test/node/harnessDaemonClient.test.ts`
+- `src/vs/sessions/services/harness/test/node/harnessService.test.ts`
+- `src/vs/sessions/services/harness/test/node/harnessMapper.test.ts`
+
+### Daemon methods consumed
+
+- `initialize`
+- `shutdown`
+- `daemon.ping`
+- `fleet.snapshot`
+- `fleet.subscribe`
+- `fleet.unsubscribe`
+- `health.get`
+- `health.subscribe`
+- `health.unsubscribe`
+- `objective.list`
+- `objective.get`
+- `objective.subscribe`
+- `objective.unsubscribe`
+- `review.list`
+- `review.get`
+- `review.subscribe`
+- `review.unsubscribe`
+- `merge.list`
+- `merge.get`
+- `merge.subscribe`
+- `merge.unsubscribe`
+- `task.get`
+- `task.list`
+- `task.tree`
+
+### Intentionally unimplemented
+
+- All write/control families remain fail-closed and `writesEnabled` remains `false`
+- Any CLI subprocess write path
+- Any direct SQLite write path
+- Phase 3 swarm derivation
+- Advisory review queue derivation
+- Transcript / activity streaming
+- Memory inspection
+- Result packet / worktree inspection
+- Public daemon subscription for task lineage; the daemon still has no `task.subscribe`, so Atlas refreshes rooted task state best-effort from adjacent daemon activity
+
+### Verification
+
+- `git diff --check`: passed
+- `node build/checker/layersChecker.ts`: passed
+- `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run compile-check-ts-native`: failed only on pre-existing unrelated noise in `src/vs/server/node/webClientServer.ts`
+  - `src/vs/server/node/webClientServer.ts(17,84)` `TS6133` `builtinExtensionsPath`
+  - `src/vs/server/node/webClientServer.ts(29,10)` `TS6133` `IExtensionManifest`
+- Focused harness tests:
+  - `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run test-node -- --runGlob "vs/sessions/services/harness/test/node/*.test.js"`: passed (`20 passing`)
+  - In this isolated worktree, the repo’s stock `test-node` runner needed a temporary narrow TypeScript emit of the harness slice into `out/` before running, because the worktree did not ship with compiled `out/` artifacts
+
+### Atlas vs daemon contract mismatches
+
+- The daemon now exposes richer read families than the older Atlas Wave A / Wave B docs assumed; Wave C closes that bridge gap for health, objectives, review gates, merge queue, and rooted task lineage.
+- The daemon still exposes no public write/control families, so daemon mode remains read-only and `writesEnabled` stays `false`.
+- The daemon already exposes `cost.get`, `agent.activity.get`, and `transcript.get`, but Wave C intentionally leaves cost/activity/transcript surfaces empty/default rather than partially mapping them without the next wave’s contract review.
+- The daemon exposes no public `task.subscribe`, so Atlas cannot maintain task lineage via a first-class push stream yet.
+- The current Phase 0b task presentation contract still expects fields that `task.*` daemon payloads do not always expose directly (`summary`, `acceptance`, `constraints`, `artifacts`, `memoryKeywords`, `contextPaths`, `dependsOn`, and sometimes dispatch-derived priority/role metadata). The bridge fills those with deterministic empty/default values rather than inventing semantics.
+
 ## Phase 2 Hardening
 
 ### What landed

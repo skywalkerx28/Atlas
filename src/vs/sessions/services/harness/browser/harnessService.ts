@@ -8,6 +8,7 @@ import { constObservable, IObservable } from '../../../../base/common/observable
 import { URI } from '../../../../base/common/uri.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { HarnessConnectionState, IHarnessConnectionInfo, IHarnessService } from '../common/harnessService.js';
+import type { IHarnessTaskTree } from '../common/harnessTypes.js';
 
 const WEB_UNAVAILABLE_ERROR = 'Harness daemon is unavailable in web sessions.';
 const EMPTY_OBJECTIVES = constObservable(Object.freeze([]) as readonly AtlasModel.IObjectiveState[]);
@@ -91,11 +92,19 @@ export class HarnessService implements IHarnessService {
 		return undefined;
 	}
 
+	async getTaskTree(_rootTaskId: string): Promise<IHarnessTaskTree | undefined> {
+		return undefined;
+	}
+
 	async getAgent(_dispatchId: string): Promise<AtlasModel.IAgentState | undefined> {
 		return undefined;
 	}
 
 	async getReviewGate(_dispatchId: string): Promise<AtlasModel.IReviewGateState | undefined> {
+		return undefined;
+	}
+
+	async getMergeEntry(_dispatchId: string): Promise<AtlasModel.IMergeEntry | undefined> {
 		return undefined;
 	}
 

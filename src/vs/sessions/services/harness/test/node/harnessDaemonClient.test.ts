@@ -25,7 +25,7 @@ import {
 } from './harnessTestUtils.js';
 
 // eslint-disable-next-line local/code-no-unexternalized-strings -- Exact fail-closed protocol error text is part of the regression contract.
-const MISSING_REQUIRED_METHOD_ERROR = "Harness daemon initialize response is missing required method 'fleet.unsubscribe'.";
+const MISSING_REQUIRED_METHOD_ERROR = "Harness daemon initialize response is missing required method 'task.tree'.";
 
 suite('HarnessDaemonClient', () => {
 	const disposables = ensureNoDisposablesAreLeakedInTestSuite();
@@ -47,6 +47,7 @@ suite('HarnessDaemonClient', () => {
 			assert.strictEqual(result.schema_version, HARNESS_SCHEMA_VERSION);
 			assert.deepStrictEqual(server.requests.map(request => request.method), ['initialize', 'daemon.ping']);
 			assert.deepStrictEqual(client.grantedCapabilities, ['read']);
+			assert.strictEqual(client.fabricIdentity?.fabric_id, 'fabric-test-1');
 		} finally {
 			await client.shutdown();
 			await server.dispose();
@@ -56,7 +57,31 @@ suite('HarnessDaemonClient', () => {
 	test('connect rejects when initialize omits a required method', async () => {
 		const server = await startMockHarnessDaemon({
 			initializeResult: createHarnessInitializeResult({
-				supported_methods: Object.freeze(['initialize', 'shutdown', 'daemon.ping', 'fleet.snapshot', 'fleet.subscribe']),
+				supported_methods: Object.freeze([
+					'initialize',
+					'shutdown',
+					'daemon.ping',
+					'fleet.snapshot',
+					'fleet.subscribe',
+					'fleet.unsubscribe',
+					'health.get',
+					'health.subscribe',
+					'health.unsubscribe',
+					'objective.list',
+					'objective.get',
+					'objective.subscribe',
+					'objective.unsubscribe',
+					'review.list',
+					'review.get',
+					'review.subscribe',
+					'review.unsubscribe',
+					'merge.list',
+					'merge.get',
+					'merge.subscribe',
+					'merge.unsubscribe',
+					'task.get',
+					'task.list',
+				]),
 			}),
 		});
 		try {
@@ -101,6 +126,26 @@ suite('HarnessDaemonClient', () => {
 				() => client.connect(server.socketPath, connectParams()),
 				error => error instanceof HarnessDaemonProtocolError
 					&& error.message === 'Harness daemon schema mismatch: expected 2026-03-01, got 2026-04-01.',
+			);
+		} finally {
+			await server.dispose();
+		}
+	});
+
+	test('connect rejects on missing fabric identity', async () => {
+		const server = await startMockHarnessDaemon({
+			initializeResult: {
+				...createHarnessInitializeResult(),
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Test intentionally removes required protocol field.
+				fabric_identity: undefined as any,
+			},
+		});
+		try {
+			const client = disposables.add(new HarnessDaemonClient(new NullLogService()));
+			await assert.rejects(
+				() => client.connect(server.socketPath, connectParams()),
+				error => error instanceof HarnessDaemonProtocolError
+					&& error.message === 'Harness daemon initialize response is missing a valid fabric_identity.',
 			);
 		} finally {
 			await server.dispose();

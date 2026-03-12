@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-/* eslint-disable local/code-layering, local/code-import-patterns -- Node-side hardening tests intentionally exercise the desktop and web harness bridge implementations directly. */
+/* eslint-disable local/code-layering, local/code-import-patterns -- Node-side bridge tests intentionally exercise the desktop and web harness implementations directly. */
 
 import assert from 'assert';
 import * as fs from 'fs/promises';
@@ -18,7 +18,24 @@ import { HarnessConnectionState } from '../../common/harnessService.js';
 import { HarnessDaemonProtocolError, HarnessDaemonUnavailableError } from '../../electron-browser/harnessDaemonClient.js';
 import { HarnessService as BrowserHarnessService } from '../../browser/harnessService.js';
 import { HarnessService as DesktopHarnessService } from '../../electron-browser/harnessService.js';
-import { createDaemonHealthState, createFleetSnapshotResult, createFleetWorkerState, startMockHarnessDaemon } from './harnessTestUtils.js';
+import {
+	createDaemonHealthState,
+	createFleetSnapshotResult,
+	createFleetWorkerState,
+	createHarnessInitializeResult,
+	createMergeListResult,
+	createMergeQueueRecord,
+	createObjectiveListResult,
+	createObjectiveRecord,
+	createQueueDispatch,
+	createReviewCandidateRecord,
+	createReviewListResult,
+	createTaskDetail,
+	createTaskListResult,
+	createTaskNode,
+	createTaskTreeResult,
+	startMockHarnessDaemon,
+} from './harnessTestUtils.js';
 
 const DAEMON_REQUIRED_ERROR = 'Harness daemon required; Atlas is in read-only mode.';
 const WEB_UNAVAILABLE_ERROR = 'Harness daemon is unavailable in web sessions.';
@@ -56,39 +73,129 @@ suite('HarnessService', () => {
 		originalEnv.clear();
 	});
 
-	test('selects daemon mode when daemon connect succeeds', async () => {
-		const tempRoot = process.platform === 'win32' ? os.tmpdir() : '/tmp';
-		const testRoot = await fs.mkdtemp(join(tempRoot, 'atlas-hs-'));
-		const workspaceRoot = join(testRoot, 'ws');
-		const homeRoot = join(testRoot, 'home');
-		const socketPath = join(workspaceRoot, '.codex', 'harness.sock');
-		await fs.mkdir(dirname(socketPath), { recursive: true });
-		await fs.mkdir(join(homeRoot, '.codex'), { recursive: true });
-		await fs.writeFile(join(homeRoot, '.codex', 'atlas-daemon-token'), 'token\n');
-
+	test('selects daemon mode and populates wave c read state when daemon connect succeeds', async () => {
+		const fixture = await createDaemonFixture();
+		const objective = createObjectiveRecord({
+			spec: { objective_id: 'OBJ-WC-1', problem_statement: 'Expand bridge' },
+			root_task_id: 'TASK-ROOT-1',
+		});
+		const review = createReviewCandidateRecord({
+			dispatch_id: 'disp-review-wave-c',
+			task_id: 'TASK-ROOT-1',
+			review_state: 'awaiting_review',
+		});
+		const merge = createMergeQueueRecord({
+			dispatch_id: 'disp-merge-wave-c',
+			task_id: 'TASK-ROOT-1',
+			status: 'pending',
+		});
 		const server = await startMockHarnessDaemon({
-			socketPath,
+			socketPath: fixture.socketPath,
+			initializeResult: createHarnessInitializeResult({
+				fabric_identity: fixture.fabricIdentity,
+			}),
 			fleetSnapshotResult: createFleetSnapshotResult({
 				snapshot: {
 					workers: Object.freeze([
 						createFleetWorkerState({
-							dispatch_id: 'disp-service',
-							task_id: 'task-service',
+							dispatch_id: 'disp-root',
+							task_id: 'TASK-ROOT-1',
 							role_id: 'planner',
 							state: 'executing',
 						}),
 					]),
-					health: createDaemonHealthState({
-						mode: 'normal',
-						active_workers: 1,
-					}),
 				},
+			}),
+			healthResult: {
+				seq: 10,
+				health: createDaemonHealthState({
+					mode: 'disk_pressure',
+					active_workers: 1,
+				}),
+			},
+			objectiveListResult: createObjectiveListResult({
+				objectives: Object.freeze([objective]),
+			}),
+			reviewListResult: createReviewListResult({
+				reviews: Object.freeze([review]),
+			}),
+			mergeListResult: createMergeListResult({
+				entries: Object.freeze([merge]),
+			}),
+			taskListResult: createTaskListResult({
+				roots: Object.freeze([
+					{
+						task: createTaskNode({
+							task_id: 'TASK-ROOT-1',
+							parent_task_id: null,
+							status: 'running',
+						}),
+						objective,
+						latest_dispatch: createQueueDispatch({
+							dispatch_id: 'disp-root',
+							task_id: 'TASK-ROOT-1',
+							role_id: 'planner',
+							priority: 'p1',
+							handoff_type: 'planning',
+						}),
+					},
+				]),
+			}),
+			taskTreeResult: createTaskTreeResult({
+				root_task_id: 'TASK-ROOT-1',
+				objective,
+				nodes: Object.freeze([
+					{
+						task: createTaskNode({
+							task_id: 'TASK-ROOT-1',
+							parent_task_id: null,
+							status: 'running',
+						}),
+						latest_dispatch: createQueueDispatch({
+							dispatch_id: 'disp-root',
+							task_id: 'TASK-ROOT-1',
+							role_id: 'planner',
+							priority: 'p1',
+							handoff_type: 'planning',
+						}),
+					},
+					{
+						task: createTaskNode({
+							task_id: 'TASK-CHILD-1',
+							parent_task_id: 'TASK-ROOT-1',
+							depth: 1,
+							status: 'pending',
+						}),
+						latest_dispatch: createQueueDispatch({
+							dispatch_id: 'disp-child',
+							task_id: 'TASK-CHILD-1',
+							role_id: 'worker',
+							priority: 'p2',
+							handoff_type: 'implementation',
+						}),
+					},
+				]),
+			}),
+			taskDetail: createTaskDetail({
+				task: createTaskNode({
+					task_id: 'TASK-ROOT-1',
+					parent_task_id: null,
+					status: 'running',
+				}),
+				objective,
+				latest_dispatch: createQueueDispatch({
+					dispatch_id: 'disp-root',
+					task_id: 'TASK-ROOT-1',
+					role_id: 'planner',
+					priority: 'p1',
+					handoff_type: 'planning',
+				}),
 			}),
 		});
 
-		const service = disposables.add(createDesktopHarnessService(homeRoot));
+		const service = disposables.add(createDesktopHarnessService(fixture.homeRoot));
 		try {
-			await service.connect(URI.file(workspaceRoot));
+			await service.connect(URI.file(fixture.workspaceRoot));
 
 			const connectionState = service.connectionState.get();
 			assert.strictEqual(connectionState.state, HarnessConnectionState.Connected);
@@ -96,32 +203,105 @@ suite('HarnessService', () => {
 			assert.strictEqual(connectionState.writesEnabled, false);
 			assert.deepStrictEqual(connectionState.grantedCapabilities, ['read']);
 
-			assert.deepStrictEqual(server.requests.map(request => request.method).slice(0, 4), [
-				'initialize',
-				'daemon.ping',
+			const methods = server.requests.map(request => request.method);
+			assert.deepStrictEqual(methods.slice(0, 2), ['initialize', 'daemon.ping']);
+			for (const requiredMethod of [
 				'fleet.snapshot',
+				'health.get',
+				'objective.list',
+				'review.list',
+				'merge.list',
+				'task.list',
+				'task.tree',
 				'fleet.subscribe',
-			]);
+				'health.subscribe',
+				'objective.subscribe',
+				'review.subscribe',
+				'merge.subscribe',
+			]) {
+				assert.ok(methods.includes(requiredMethod), `expected daemon request '${requiredMethod}'`);
+			}
 
-			assert.deepStrictEqual(service.objectives.get(), []);
-			assert.deepStrictEqual(service.swarms.get(), []);
-			assert.deepStrictEqual(service.tasks.get(), []);
-			assert.deepStrictEqual(service.advisoryReviewQueue.get(), []);
-			assert.deepStrictEqual(service.reviewGates.get(), []);
-			assert.deepStrictEqual(service.mergeQueue.get(), []);
-			assert.strictEqual(service.cost.get().totalSpentUsd, 0);
-			assert.deepStrictEqual(service.cost.get().breakdowns, []);
+			assert.strictEqual(service.objectives.get().length, 1);
+			assert.strictEqual(service.objectives.get()[0].objectiveId, 'OBJ-WC-1');
+			assert.strictEqual(service.reviewGates.get().length, 1);
+			assert.strictEqual(service.reviewGates.get()[0].dispatchId, 'disp-review-wave-c');
+			assert.strictEqual(service.mergeQueue.get().length, 1);
+			assert.strictEqual(service.mergeQueue.get()[0].dispatchId, 'disp-merge-wave-c');
+			assert.strictEqual(service.tasks.get().length, 2);
+			assert.deepStrictEqual(service.tasks.get().map(task => task.taskId), ['TASK-ROOT-1', 'TASK-CHILD-1']);
+			assert.strictEqual(service.health.get().mode, 'disk_pressure');
+			assert.strictEqual(service.health.get().attentionLevel, 3);
 
-			const fleet = service.fleet.get();
-			assert.strictEqual(fleet.agents.length, 1);
-			assert.strictEqual(fleet.agents[0].dispatchId, 'disp-service');
-			assert.strictEqual(fleet.agents[0].status, 'running');
-			assert.strictEqual((await service.getAgent('disp-service'))?.taskId, 'task-service');
+			assert.strictEqual((await service.getObjective('OBJ-WC-1'))?.objectiveId, 'OBJ-WC-1');
+			assert.strictEqual((await service.getTask('TASK-ROOT-1'))?.taskId, 'TASK-ROOT-1');
+			assert.strictEqual((await service.getTaskTree('TASK-ROOT-1'))?.nodes.length, 2);
+			assert.strictEqual((await service.getReviewGate('disp-review-wave-c'))?.dispatchId, 'disp-review-wave-c');
+			assert.strictEqual((await service.getMergeEntry('disp-merge-wave-c'))?.dispatchId, 'disp-merge-wave-c');
 		} finally {
 			await service.disconnect();
-			assert.deepStrictEqual(server.requests.map(request => request.method).slice(-2), ['fleet.unsubscribe', 'shutdown']);
 			await server.dispose();
-			await fs.rm(testRoot, { recursive: true, force: true });
+			await fixture.dispose();
+		}
+	});
+
+	test('applies objective, review, merge, and health notifications in daemon mode', async () => {
+		const fixture = await createDaemonFixture();
+		const server = await startMockHarnessDaemon({
+			socketPath: fixture.socketPath,
+			initializeResult: createHarnessInitializeResult({
+				fabric_identity: fixture.fabricIdentity,
+			}),
+			objectiveListResult: createObjectiveListResult({ objectives: Object.freeze([]) }),
+			reviewListResult: createReviewListResult({ reviews: Object.freeze([]) }),
+			mergeListResult: createMergeListResult({ entries: Object.freeze([]) }),
+			taskListResult: createTaskListResult({ roots: Object.freeze([]) }),
+			taskTreeResult: createTaskTreeResult({ nodes: Object.freeze([]) }),
+		});
+
+		const service = disposables.add(createDesktopHarnessService(fixture.homeRoot));
+		try {
+			await service.connect(URI.file(fixture.workspaceRoot));
+
+			await server.notify('health.update', {
+				subscription_id: 'sub-health.subscribe',
+				seq: 11,
+				...createDaemonHealthState({
+					mode: 'paused',
+					active_workers: 0,
+				}),
+			});
+			await server.notify('objective.update', {
+				subscription_id: 'sub-objective.subscribe',
+				seq: 12,
+				objectives: [createObjectiveRecord({
+					spec: { objective_id: 'OBJ-NOTIFY', problem_statement: 'Notified' },
+					root_task_id: 'TASK-ROOT-1',
+				})],
+			});
+			await server.notify('review.update', {
+				subscription_id: 'sub-review.subscribe',
+				seq: 13,
+				added: [createReviewCandidateRecord({ dispatch_id: 'disp-review-notify' })],
+				changed: [],
+				removed: [],
+			});
+			await server.notify('merge.update', {
+				subscription_id: 'sub-merge.subscribe',
+				seq: 14,
+				added: [createMergeQueueRecord({ dispatch_id: 'disp-merge-notify' })],
+				changed: [],
+				removed: [],
+			});
+
+			await waitFor(() => service.objectives.get().some(objective => objective.objectiveId === 'OBJ-NOTIFY'));
+			await waitFor(() => service.reviewGates.get().some(review => review.dispatchId === 'disp-review-notify'));
+			await waitFor(() => service.mergeQueue.get().some(entry => entry.dispatchId === 'disp-merge-notify'));
+			await waitFor(() => service.health.get().mode === 'paused');
+		} finally {
+			await service.disconnect();
+			await server.dispose();
+			await fixture.dispose();
 		}
 	});
 
@@ -169,6 +349,44 @@ suite('HarnessService', () => {
 		assert.strictEqual(service.connectionState.get().errorMessage, 'bad contract');
 	});
 
+	test('fabric identity mismatch fails closed and does not poll', async () => {
+		const fixture = await createDaemonFixture();
+		const otherProjectRoot = join(dirname(fixture.workspaceRoot), 'other-project');
+		await fs.mkdir(otherProjectRoot, { recursive: true });
+		const service = disposables.add(createDesktopHarnessService(fixture.homeRoot));
+		const mutable = service as unknown as IMutableHarnessService;
+		let pollingStarted = false;
+		const server = await startMockHarnessDaemon({
+			socketPath: fixture.socketPath,
+			initializeResult: createHarnessInitializeResult({
+				fabric_identity: {
+					...fixture.fabricIdentity,
+					repo_root: otherProjectRoot,
+				},
+			}),
+		});
+
+		const originalStartPolling = mutable.startPolling.bind(service);
+		mutable.startPolling = async workspaceRoot => {
+			pollingStarted = true;
+			return originalStartPolling(workspaceRoot);
+		};
+
+		try {
+			await assert.rejects(
+				() => service.connect(URI.file(fixture.workspaceRoot)),
+				error => error instanceof HarnessDaemonProtocolError
+					&& error.message.includes('does not match workspace'),
+			);
+			assert.strictEqual(pollingStarted, false);
+			assert.strictEqual(service.connectionState.get().mode, 'none');
+			assert.strictEqual(service.connectionState.get().state, HarnessConnectionState.Error);
+		} finally {
+			await server.dispose();
+			await fixture.dispose();
+		}
+	});
+
 	test('desktop write methods stay fail-closed in daemon mode', async () => {
 		const service = disposables.add(createDesktopHarnessService(os.tmpdir()));
 		service.connectionState.set(connectionState('daemon'), undefined, undefined);
@@ -214,6 +432,8 @@ suite('HarnessService', () => {
 		assert.strictEqual(service.cost.get().totalSpentUsd, 0);
 		assert.deepStrictEqual(service.reviewGates.get(), []);
 		assert.deepStrictEqual(service.mergeQueue.get(), []);
+		assert.strictEqual(await service.getTaskTree('TASK-ROOT-1'), undefined);
+		assert.strictEqual(await service.getMergeEntry('disp-merge-1'), undefined);
 
 		await assert.rejects(
 			() => service.pauseAgent('disp-web'),
@@ -228,7 +448,7 @@ suite('HarnessService', () => {
 
 interface IMutableHarnessService {
 	connectDaemon(workspaceRoot: URI): Promise<void>;
-	startPolling(workspaceRoot: URI): Promise<void>;
+	startPolling(workspaceRoot: URI, preferredDbPath?: string): Promise<void>;
 }
 
 function createDesktopHarnessService(userHomePath: string): DesktopHarnessService {
@@ -266,23 +486,72 @@ async function assertDesktopWriteFailures(
 		string
 	>,
 ): Promise<void> {
-	const operations: Array<readonly [keyof typeof expectedMessages, () => Promise<unknown>]> = [
-		['pauseAgent', () => service.pauseAgent('disp-1')],
-		['resumeAgent', () => service.resumeAgent('disp-1')],
-		['cancelAgent', () => service.cancelAgent('disp-1')],
-		['steerAgent', () => service.steerAgent('disp-1', 'hello')],
-		['submitObjective', () => service.submitObjective('Ship it')],
-		['submitDispatch', () => service.submitDispatch({ role_id: 'worker', message: 'echo ok', skip_gates: false })],
-		['recordGateVerdict', () => service.recordGateVerdict('disp-1', 'go' as AtlasModel.ReviewDecision, 'judge')],
-		['authorizePromotion', () => service.authorizePromotion('disp-1', 'judge')],
-		['enqueueForMerge', () => service.enqueueForMerge('disp-1')],
-	];
+	await assert.rejects(() => service.pauseAgent('disp-1'), errorMessage(expectedMessages.pauseAgent));
+	await assert.rejects(() => service.resumeAgent('disp-1'), errorMessage(expectedMessages.resumeAgent));
+	await assert.rejects(() => service.cancelAgent('disp-1'), errorMessage(expectedMessages.cancelAgent));
+	await assert.rejects(() => service.steerAgent('disp-1', 'msg'), errorMessage(expectedMessages.steerAgent));
+	await assert.rejects(() => service.submitObjective('problem'), errorMessage(expectedMessages.submitObjective));
+	await assert.rejects(
+		() => service.submitDispatch({ role_id: 'worker', message: 'noop', skip_gates: false }),
+		errorMessage(expectedMessages.submitDispatch),
+	);
+	await assert.rejects(
+		() => service.recordGateVerdict('disp-1', 'go' as AtlasModel.ReviewDecision, 'judge'),
+		errorMessage(expectedMessages.recordGateVerdict),
+	);
+	await assert.rejects(
+		() => service.authorizePromotion('disp-1', 'planner'),
+		errorMessage(expectedMessages.authorizePromotion),
+	);
+	await assert.rejects(
+		() => service.enqueueForMerge('disp-1'),
+		errorMessage(expectedMessages.enqueueForMerge),
+	);
+}
 
-	for (const [name, operation] of operations) {
-		await assert.rejects(
-			() => operation(),
-			error => error instanceof Error && error.message === expectedMessages[name],
-			`${name} should fail closed`,
-		);
+function errorMessage(expected: string) {
+	return (error: unknown) => error instanceof Error && error.message === expected;
+}
+
+async function createDaemonFixture() {
+	const tempRoot = process.platform === 'win32' ? os.tmpdir() : '/tmp';
+	const testRoot = await fs.mkdtemp(join(tempRoot, 'atlas-hs-wave-c-'));
+	const workspaceRoot = join(testRoot, 'ws');
+	const homeRoot = join(testRoot, 'home');
+	const socketPath = join(workspaceRoot, '.codex', 'harness.sock');
+	await fs.mkdir(dirname(socketPath), { recursive: true });
+	await fs.mkdir(join(homeRoot, '.codex'), { recursive: true });
+	await fs.mkdir(join(workspaceRoot, '.codex', 'artifacts'), { recursive: true });
+	await fs.mkdir(join(workspaceRoot, '.codex', 'workspace-comms'), { recursive: true });
+	await fs.writeFile(join(homeRoot, '.codex', 'atlas-daemon-token'), 'token\n');
+	await fs.writeFile(join(workspaceRoot, 'router.db'), '');
+	await fs.writeFile(join(workspaceRoot, '.codex', 'workspace-comms', 'metrics.jsonl'), '');
+
+	return {
+		testRoot,
+		workspaceRoot,
+		homeRoot,
+		socketPath,
+		fabricIdentity: {
+			fabric_id: 'fabric-wave-c',
+			repo_root: workspaceRoot,
+			db_path: join(workspaceRoot, 'router.db'),
+			harness_home: workspaceRoot,
+			artifact_dir: join(workspaceRoot, '.codex', 'artifacts'),
+			metrics_path: join(workspaceRoot, '.codex', 'workspace-comms', 'metrics.jsonl'),
+		},
+		async dispose() {
+			await fs.rm(testRoot, { recursive: true, force: true });
+		},
+	};
+}
+
+async function waitFor(predicate: () => boolean, attempts = 20): Promise<void> {
+	for (let attempt = 0; attempt < attempts; attempt += 1) {
+		if (predicate()) {
+			return;
+		}
+		await new Promise(resolve => setTimeout(resolve, 10));
 	}
+	assert.fail('Timed out waiting for harness state update.');
 }

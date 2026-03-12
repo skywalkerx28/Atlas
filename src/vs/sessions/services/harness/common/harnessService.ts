@@ -7,6 +7,7 @@ import { Event } from '../../../../base/common/event.js';
 import { IObservable } from '../../../../base/common/observable.js';
 import { URI } from '../../../../base/common/uri.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+import type { IHarnessTaskTree } from './harnessTypes.js';
 
 export const IHarnessService = createDecorator<IHarnessService>('harnessService');
 
@@ -52,8 +53,10 @@ export interface IHarnessService {
 	getObjective(objectiveId: string): Promise<AtlasModel.IObjectiveState | undefined>;
 	getSwarm(swarmId: string): Promise<AtlasModel.ISwarmState | undefined>;
 	getTask(taskId: string): Promise<AtlasModel.ITaskState | undefined>;
+	getTaskTree(rootTaskId: string): Promise<IHarnessTaskTree | undefined>;
 	getAgent(dispatchId: string): Promise<AtlasModel.IAgentState | undefined>;
 	getReviewGate(dispatchId: string): Promise<AtlasModel.IReviewGateState | undefined>;
+	getMergeEntry(dispatchId: string): Promise<AtlasModel.IMergeEntry | undefined>;
 	getTaskPacket(taskId: string): Promise<AtlasModel.IWireTaskPacket | undefined>;
 	getResultPacket(dispatchId: string): Promise<AtlasModel.IWireResultPacket | undefined>;
 	getTranscript(dispatchId: string): Promise<readonly AtlasModel.ITranscriptEntry[]>;

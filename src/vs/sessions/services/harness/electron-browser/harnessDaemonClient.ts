@@ -21,7 +21,13 @@ import {
 	type IHarnessDaemonResponse,
 	type IHarnessJsonRpcError,
 } from '../common/harnessProtocol.js';
-import type { HarnessCapability, IHarnessInitializeParams, IHarnessInitializeResult, IPingResult } from '../common/harnessTypes.js';
+import type {
+	HarnessCapability,
+	IHarnessFabricIdentity,
+	IHarnessInitializeParams,
+	IHarnessInitializeResult,
+	IPingResult,
+} from '../common/harnessTypes.js';
 
 const DEFAULT_CONNECT_TIMEOUT_MS = 5_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 5_000;
@@ -84,6 +90,10 @@ export class HarnessDaemonClient extends Disposable {
 
 	get grantedCapabilities(): readonly HarnessCapability[] {
 		return this._initializeResult?.granted_capabilities ?? [];
+	}
+
+	get fabricIdentity(): IHarnessFabricIdentity | undefined {
+		return this._initializeResult?.fabric_identity;
 	}
 
 	supportsMethod(method: string): boolean {
@@ -315,6 +325,10 @@ export class HarnessDaemonClient extends Disposable {
 	private handleNotificationMessage(notification: IHarnessDaemonNotification): void {
 		switch (notification.method) {
 			case 'fleet.delta':
+			case 'health.update':
+			case 'objective.update':
+			case 'review.update':
+			case 'merge.update':
 			case 'daemon.resync_required':
 				this._onDidNotification.fire(notification);
 				return;
@@ -335,6 +349,9 @@ export class HarnessDaemonClient extends Disposable {
 		}
 		if (!Array.isArray(result.granted_capabilities) || !result.granted_capabilities.includes('read')) {
 			throw new HarnessDaemonProtocolError('Harness daemon initialize response did not grant read capability.');
+		}
+		if (!isValidFabricIdentity(result.fabric_identity)) {
+			throw new HarnessDaemonProtocolError('Harness daemon initialize response is missing a valid fabric_identity.');
 		}
 		if (!Array.isArray(result.supported_methods)) {
 			throw new HarnessDaemonProtocolError('Harness daemon initialize response is missing supported_methods.');
@@ -423,4 +440,21 @@ function normalizeSocketTransportError(error: Error): Error {
 
 function isObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null;
+}
+
+function isValidFabricIdentity(value: unknown): value is IHarnessFabricIdentity {
+	if (!isObject(value)) {
+		return false;
+	}
+
+	return isNonEmptyString(value['fabric_id'])
+		&& isNonEmptyString(value['repo_root'])
+		&& isNonEmptyString(value['db_path'])
+		&& isNonEmptyString(value['harness_home'])
+		&& isNonEmptyString(value['artifact_dir'])
+		&& isNonEmptyString(value['metrics_path']);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+	return typeof value === 'string' && value.trim().length > 0;
 }

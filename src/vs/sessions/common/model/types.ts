@@ -44,7 +44,14 @@ declare global {
 		type IReviewGateState = import('./review.js').IReviewGateState;
 		type IMergeEntry = import('./review.js').IMergeEntry;
 
+		type HandoffType = import('./wire.js').HandoffType;
 		type ReviewDecision = import('./wire.js').ReviewDecision;
+		type WireDispatchPriority = import('./wire.js').WireDispatchPriority;
+		type WireIntegrationState = import('./wire.js').WireIntegrationState;
+		type WirePromotionState = import('./wire.js').WirePromotionState;
+		type WireReviewState = import('./wire.js').WireReviewState;
+		type WireTaskNodeStatus = import('./wire.js').WireTaskNodeStatus;
+		type WireWorkerState = import('./wire.js').WireWorkerState;
 		type IWireDispatchCommand = import('./wire.js').IWireDispatchCommand;
 		type IWireMemoryRecord = import('./wire.js').IWireMemoryRecord;
 		type IWireResultPacket = import('./wire.js').IWireResultPacket;

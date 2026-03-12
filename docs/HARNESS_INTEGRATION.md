@@ -41,7 +41,22 @@ The harness daemon (`axiom-harness serve`) is a long-running process that expose
 - **Write delegation (future)**: once the daemon exposes write families, Atlas should route them through daemon methods such as `dispatch.submit`, `objective.submit`, and `event.emit` rather than bypassing harness validation
 - **Failure isolation**: Daemon and orchestrator run as independent tokio tasks with bounded queues and panic containment
 
-Important current-branch constraint: `streams.rs` already classifies future topics like `health`, `cost`, `review`, and `agent.activity:*`, but `session.rs` does not expose public subscribe methods for them yet. The current Atlas bridge must therefore treat those as internal daemon scaffolding, not as shipped API.
+Current merged daemon surface: the daemon now exposes these public read methods:
+
+- `initialize` with `fabric_identity`
+- `shutdown`
+- `daemon.ping`
+- `fleet.snapshot`, `fleet.subscribe`, `fleet.unsubscribe`
+- `health.get`, `health.subscribe`, `health.unsubscribe`
+- `objective.list`, `objective.get`, `objective.subscribe`, `objective.unsubscribe`
+- `review.list`, `review.get`, `review.subscribe`, `review.unsubscribe`
+- `merge.list`, `merge.get`, `merge.subscribe`, `merge.unsubscribe`
+- `task.get`, `task.list`, `task.tree`
+- `cost.get`
+- `agent.activity.get`
+- `transcript.get`
+
+Wave C Atlas consumes the first five families plus `task.get` / `task.list` / `task.tree`, but still leaves `cost.get`, `agent.activity.get`, and `transcript.get` as empty/default surfaces for the next bridge wave. Atlas must still treat everything outside that list as unsupported. In particular, there is still no public daemon write family, no public `task.subscribe`, and no public memory or worktree inspection stream yet.
 
 ### Fallback: Read-Only Polling
 
@@ -64,7 +79,12 @@ Wave A Atlas ships **no write path**. In both daemon mode and polling mode:
 
 When later daemon method families exist, Atlas can delegate writes through the daemon only.
 
-Atlas implements this as `IHarnessService` — a singleton service in `sessions/services/harness/` that manages a connection to one harness workspace and exposes harness state as observables. On the current daemon branch, only fleet and derived health populate from daemon/polling reads; the other observables remain explicit empty/default surfaces until public daemon methods land.
+Atlas implements this as `IHarnessService` — a singleton service in `sessions/services/harness/` that manages a connection to one harness workspace and exposes harness state as observables. In the current merged bridge:
+
+- daemon mode validates `initialize.fabric_identity` against the opened workspace and fails closed on cross-project mismatch
+- daemon mode populates fleet, health, objectives, review gates, merge queue, and rooted task lineage
+- polling mode remains intentionally narrow and read-only: it only populates fleet and derived health from SQLite
+- unsupported observables like swarms, advisory review queue, transcripts, memory, result packets, and worktree inspection remain explicit empty/default surfaces until the daemon exposes truthful read families for them
 
 ### Swarm Model
 
@@ -88,10 +108,10 @@ The implication for Atlas is simple: the UI should group data by swarm first, th
 
 The central bridge between Atlas and the harness. Manages:
 
-- **Connection lifecycle**: Attempts daemon socket at `$AXIOM_HARNESS_SOCK` or `~/.codex/harness.sock`; falls back to resolving `router.db` via the harness path resolution chain (see Environment Variables below)
-- **Daemon mode (Wave A)**: Performs `initialize`, loads `fleet.snapshot`, subscribes to `fleet.delta`, and keeps unsupported observables empty/default
+- **Connection lifecycle**: Attempts daemon socket at `$AXIOM_HARNESS_SOCK` or `~/.codex/harness.sock`; validates `initialize.fabric_identity.repo_root` against the opened workspace; falls back to resolving `router.db` via the harness path resolution chain only when the daemon is absent or unreachable
+- **Daemon mode (Wave C)**: Performs `initialize`, validates `fabric_identity`, performs `daemon.ping`, loads `fleet.snapshot`, `health.get`, `objective.list`, `review.list`, `merge.list`, and `task.list`, expands each root task with `task.tree`, subscribes to `fleet.delta`, `health.update`, `objective.update`, `review.update`, and `merge.update`, and keeps unsupported observables empty/default
 - **Polling mode** (fallback): Polls read-only SQLite tables for fleet-relevant state on an interval
-- **Write operations (Wave A)**: All writes fail closed. Atlas does not shell out to `axiom-harness`, invoke `orchestrator-backend.sh`, or write `dispatch_control`
+- **Write operations (Wave C)**: All writes fail closed. Atlas does not shell out to `axiom-harness`, invoke `orchestrator-backend.sh`, or write `dispatch_control`
 - **State aggregation**: Mirrors the TUI's `FleetSnapshot` pattern — assembles all data into a single reactive state tree
 
 ```typescript
@@ -119,8 +139,10 @@ interface IHarnessService {
     getObjective(objectiveId: string): Promise<IObjectiveState | undefined>;
     getSwarm(swarmId: string): Promise<ISwarmState | undefined>;
     getTask(taskId: string): Promise<ITaskState | undefined>;
+    getTaskTree(rootTaskId: string): Promise<IHarnessTaskTree | undefined>;
     getAgent(dispatchId: string): Promise<IAgentState | undefined>;
     getReviewGate(dispatchId: string): Promise<IReviewGateState | undefined>;
+    getMergeEntry(dispatchId: string): Promise<IMergeEntry | undefined>;
     getTaskPacket(taskId: string): Promise<ITaskPacket | undefined>;
     getResultPacket(dispatchId: string): Promise<IResultPacket | undefined>;
     getTranscript(dispatchId: string): Promise<readonly ITranscriptEntry[]>;
@@ -149,6 +171,8 @@ interface IHarnessService {
     subscribeSwarmActivity(swarmId: string): IObservable<readonly ITranscriptEntry[]>;
 }
 ```
+
+Current merged behavior note: `task.list` is treated as a root-task anchor list only, not a complete global task universe. Atlas expands those roots with `task.tree` and stores the rooted lineage as the primitive that Phase 3 will later derive swarms from.
 
 ---
 

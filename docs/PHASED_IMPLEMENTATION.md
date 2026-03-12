@@ -824,17 +824,16 @@ syntropic-harness-fresh/
         ├── methods/
         │   ├── mod.rs
         │   ├── initialize.rs         Handshake: version/capability/schema negotiation
-        │   ├── fleet.rs              fleet.snapshot, fleet.subscribe
-        │   ├── agent.rs              agent.get, agent.activity.subscribe
-        │   ├── task.rs               task.get, task.list
-        │   ├── objective.rs          objective.get, objective.list, objective.submit
-        │   ├── control.rs            control.pause/resume/cancel/steer
-        │   ├── dispatch.rs           dispatch.submit
-        │   ├── review.rs             review.get, review.approve/reject
+        │   ├── daemon.rs             daemon.ping
+        │   ├── fleet.rs              fleet.snapshot, fleet.subscribe, fleet.unsubscribe
         │   ├── health.rs             health.get, health.subscribe
-        │   ├── cost.rs               cost.get, cost.subscribe
-        │   ├── memory.rs             memory.list (by scope/type)
-        │   └── subscribe.rs          Generic subscribe/unsubscribe handling
+        │   ├── objective.rs          objective.get, objective.list, objective.subscribe
+        │   ├── review.rs             review.get, review.list, review.subscribe
+        │   ├── merge.rs              merge.get, merge.list, merge.subscribe
+        │   ├── task.rs               task.get, task.list, task.tree
+        │   ├── cost.rs               cost.get
+        │   ├── activity.rs           agent.activity.get
+        │   └── transcript.rs         transcript.get
         └── audit.rs                  Audit log: rid correlation, structured logging
 ```
 
@@ -1135,9 +1134,22 @@ export function mapWireAgent(wire: IWireAgentState): IAgentState {
 
 **Critical design rule: polling mode is read-only.** When the daemon is absent, Atlas can browse cached/polled state but cannot issue writes. This ensures a single authenticated control plane — all writes flow through the daemon's token auth, capability model, and audit trail. There is no second privileged write path via CLI subprocess.
 
-**Wave A daemon scope is intentionally narrow.** The currently merged daemon surface only exposes `initialize`, `shutdown`, `daemon.ping`, `fleet.snapshot`, `fleet.subscribe`, and `fleet.unsubscribe`. Atlas therefore keeps `writesEnabled: false` even in daemon mode, subscribes only to fleet state, and leaves all unsupported read/write families empty or fail-closed.
+**Wave A was intentionally narrow.** The initial bridge only consumed `initialize`, `shutdown`, `daemon.ping`, `fleet.snapshot`, `fleet.subscribe`, and `fleet.unsubscribe`, while keeping `writesEnabled: false` even in daemon mode.
 
-**Wave B on the current harness branch remains narrow too.** `streams.rs` contains internal topic classification for future families like `health`, `cost`, `review`, and `agent.activity:*`, but `session.rs` still does not expose public JSON-RPC subscribe/read methods for those families. Wave B can honestly consume `daemon.ping` as an additional post-initialize read check, but it still must not pretend that objectives, tasks, reviews, merge state, transcripts, or cost are daemon-backed yet.
+**Current merged Wave C bridge truthfully consumes the richer read-only daemon surface.** Atlas now reads:
+
+- `initialize` with `fabric_identity`
+- `daemon.ping`
+- `fleet.snapshot`, `fleet.subscribe`, `fleet.unsubscribe`
+- `health.get`, `health.subscribe`, `health.unsubscribe`
+- `objective.list`, `objective.get`, `objective.subscribe`, `objective.unsubscribe`
+- `review.list`, `review.get`, `review.subscribe`, `review.unsubscribe`
+- `merge.list`, `merge.get`, `merge.subscribe`, `merge.unsubscribe`
+- `task.get`, `task.list`, `task.tree`
+
+Atlas validates `initialize.fabric_identity.repo_root` against the opened workspace and fails closed on mismatch. `task.list` is treated as root-task anchors only, and `task.tree` is the rooted lineage primitive that Phase 3 will later derive swarms from. Polling fallback remains intentionally narrow and read-only: it still only surfaces fleet and derived health from SQLite, because mirroring every daemon family locally would create a second privileged control plane.
+
+The daemon branch currently exposes a few additional read methods (`cost.get`, `agent.activity.get`, and `transcript.get`) that Atlas still leaves intentionally unimplemented in Wave C. Those remain explicit empty/default surfaces until the next bridge wave adopts them truthfully.
 
 ```typescript
 // electron-browser/harnessService.ts
@@ -1158,17 +1170,29 @@ export class DesktopHarnessService extends Disposable implements IHarnessService
             this._connectionState.set({
                 state: HarnessConnectionState.Connected,
                 mode: 'daemon',
-                writesEnabled: false, // Wave A: daemon is read-only from Atlas
+                writesEnabled: false, // Wave A through Wave C: daemon is still read-only from Atlas
                 ...
             });
 
-            // Wave A / Wave B consume daemon.ping plus the fleet state the daemon actually exposes.
+            // Current merged bridge consumes the read-only daemon surface that actually exists.
             await this.daemonClient.request('daemon.ping', {});
             this.daemonClient.onNotification((method, params) => {
                 this.handleNotification(method, params);
             });
             await this.daemonClient.request('fleet.snapshot', {});
+            await this.daemonClient.request('health.get', {});
+            await this.daemonClient.request('objective.list', {});
+            await this.daemonClient.request('review.list', {});
+            await this.daemonClient.request('merge.list', {});
+            const roots = await this.daemonClient.request('task.list', {});
+            for (const root of roots.roots) {
+                await this.daemonClient.request('task.tree', { root_task_id: root.task.task_id });
+            }
             await this.daemonClient.request('fleet.subscribe', {});
+            await this.daemonClient.request('health.subscribe', {});
+            await this.daemonClient.request('objective.subscribe', {});
+            await this.daemonClient.request('review.subscribe', {});
+            await this.daemonClient.request('merge.subscribe', {});
         } catch (error) {
             if (!isDaemonUnavailable(error)) {
                 throw error;
@@ -1191,7 +1215,13 @@ export class DesktopHarnessService extends Disposable implements IHarnessService
             case 'fleet.delta':
                 this._fleet.set(mapWireFleet(params as IWireFleetDelta), undefined);
                 break;
-            // Unsupported topic families remain empty/default in Wave A.
+            case 'health.update':
+            case 'objective.update':
+            case 'review.update':
+            case 'merge.update':
+                // Map the daemon payload into the corresponding Atlas presentation observable.
+                break;
+            // Unsupported topic families still remain empty/default until the daemon exposes them.
         }
     }
 
@@ -1202,7 +1232,7 @@ export class DesktopHarnessService extends Disposable implements IHarnessService
         throw new Error('Harness daemon required; Atlas is in read-only mode.');
     }
 
-    // Wave A write methods fail closed because the daemon does not yet expose them.
+    // Write methods still fail closed because the daemon does not yet expose them.
     async pauseAgent(dispatchId: string): Promise<void> {
         this.failClosedWrite('control methods');
     }
@@ -1278,7 +1308,9 @@ registerSingleton(IHarnessService, BrowserHarnessService, InstantiationType.Dela
 - Layering check passes (new files in `vs/sessions/services/`, imports only from `vs/base/`, `vs/platform/`, `vs/sessions/common/model/`)
 - Unit test: mock daemon socket, verify initialize handshake, verify notification → observable update flow
 - Integration test: start `axiom-harness serve`, open Atlas window, verify connection state shows "Connected (daemon)" with `writesEnabled: false`
-- Integration test: verify only fleet state populates from `fleet.snapshot` / `fleet.delta`, and unsupported observables remain empty/default
+- Integration test: verify `initialize.fabric_identity` is captured and validated against the opened workspace, and cross-project mismatch fails closed without degrading to polling
+- Integration test: verify fleet, health, objective, review, merge, and rooted task state populate from the daemon methods above
+- Integration test: verify `task.list` is treated as a root-task anchor list only and Atlas expands rooted lineage through `task.tree`
 - **Read-only fallback test**: stop daemon, open Atlas window, verify connection state shows "Connected (polling)" with `writesEnabled: false`. Verify fleet/health observables populate from SQLite. Verify all write methods throw with deterministic read-only errors. Verify write action buttons are disabled in the UI.
 - Disconnected test: no harness at all, verify graceful "Harness not connected" state
 - **No CLI write path test**: verify that no code path in `DesktopHarnessService` shells out to `axiom-harness` CLI for write operations. The CLI is not a second control plane.

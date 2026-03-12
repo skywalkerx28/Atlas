@@ -8,16 +8,31 @@ import type {
 	IFleetDeltaNotification,
 	IFleetSnapshotResult,
 	IFleetWorkerState,
+	IHealthResult,
+	IHealthUpdateNotification,
 	IHarnessFleetStateSnapshot,
 	IHarnessHealthSnapshot,
 	IHarnessQueueSnapshot,
+	IHarnessTaskLineageNode,
+	IHarnessTaskTree,
 	IHarnessWorkerRecord,
+	IMergeQueueRecord,
+	IObjectiveRecord,
+	IQueueDispatch,
+	IReviewCandidateRecord,
+	ITaskDetail,
+	ITaskNode,
+	ITaskTreeNodeDetail,
+	ITaskTreeResult,
 } from '../common/harnessTypes.js';
 
 type AgentStatus = AtlasModel.IAgentState['status'];
 type AgentRole = AtlasModel.IAgentState['role'];
 type AttentionLevel = AtlasModel.IAgentState['attentionLevel'];
+type ObjectiveStatus = AtlasModel.IObjectiveState['status'];
 type PoolMode = AtlasModel.IHealthState['mode'];
+type TaskStatus = AtlasModel.ITaskState['status'];
+type MergeStatus = AtlasModel.IMergeEntry['status'];
 
 const AGENT_STATUS = {
 	spawning: 'spawning' as AgentStatus,
@@ -33,6 +48,33 @@ const AGENT_ROLE = {
 	planner: 'planner' as AgentRole,
 	worker: 'worker' as AgentRole,
 	judge: 'judge' as AgentRole,
+};
+
+const OBJECTIVE_STATUS = {
+	open: 'open' as ObjectiveStatus,
+	planning: 'planning' as ObjectiveStatus,
+	executing: 'executing' as ObjectiveStatus,
+	reviewing: 'reviewing' as ObjectiveStatus,
+	completed: 'completed' as ObjectiveStatus,
+	failed: 'failed' as ObjectiveStatus,
+};
+
+const TASK_STATUS = {
+	queued: 'queued' as TaskStatus,
+	executing: 'executing' as TaskStatus,
+	blocked: 'blocked' as TaskStatus,
+	reviewing: 'reviewing' as TaskStatus,
+	completed: 'completed' as TaskStatus,
+	failed: 'failed' as TaskStatus,
+	cancelled: 'cancelled' as TaskStatus,
+};
+
+const MERGE_STATUS = {
+	pending: 'pending' as MergeStatus,
+	mergeStarted: 'merge_started' as MergeStatus,
+	merged: 'merged' as MergeStatus,
+	mergeBlocked: 'merge_blocked' as MergeStatus,
+	abandoned: 'abandoned' as MergeStatus,
 };
 
 const ATTENTION = {
@@ -51,6 +93,8 @@ const POOL_MODE = {
 	paused: 'paused' as PoolMode,
 };
 
+const EMPTY_BREAKDOWNS = Object.freeze([]) as AtlasModel.ICostState['breakdowns'];
+
 export const EMPTY_FLEET_STATE: AtlasModel.IFleetState = Object.freeze({
 	agents: Object.freeze([]) as readonly AtlasModel.IAgentState[],
 	activeCount: 0,
@@ -62,13 +106,13 @@ export const EMPTY_FLEET_STATE: AtlasModel.IFleetState = Object.freeze({
 });
 
 export const EMPTY_HEALTH_STATE: AtlasModel.IHealthState = Object.freeze({
-	mode: POOL_MODE.normal,
+	mode: POOL_MODE.paused,
 	diskUsagePct: 0,
 	memoryUsagePct: 0,
 	walSizeBytes: undefined,
 	activeWorkers: 0,
 	queueDepth: 0,
-	attentionLevel: ATTENTION.idle,
+	attentionLevel: ATTENTION.needsAction,
 	lastHealthCheck: undefined,
 });
 
@@ -77,7 +121,7 @@ export const EMPTY_COST_STATE: AtlasModel.ICostState = Object.freeze({
 	budgetCeilingUsd: undefined,
 	utilization: undefined,
 	burnRateUsdPerHour: undefined,
-	breakdowns: Object.freeze([]) as AtlasModel.ICostState['breakdowns'],
+	breakdowns: EMPTY_BREAKDOWNS,
 	attentionLevel: ATTENTION.idle,
 	updatedAt: undefined,
 });
@@ -94,21 +138,25 @@ export function createEmptyFleetSnapshotState(): IHarnessFleetStateSnapshot {
 			mergeConflicts: 0,
 			pendingWorkspaceEvents: 0,
 		},
-		health: {
-			mode: 'unknown',
-			diskUsagePct: 0,
-			memoryUsagePct: 0,
-			walSizeBytes: 0,
-			activeWorkers: 0,
-			queueDepth: 0,
-			lastHealthCheck: undefined,
-		},
+		health: createUnknownHealthSnapshot(),
+	};
+}
+
+export function createUnknownHealthSnapshot(): IHarnessHealthSnapshot {
+	return {
+		mode: 'unknown',
+		diskUsagePct: 0,
+		memoryUsagePct: 0,
+		walSizeBytes: 0,
+		activeWorkers: 0,
+		queueDepth: 0,
+		lastHealthCheck: undefined,
 	};
 }
 
 export function snapshotStateFromDaemonSnapshot(result: IFleetSnapshotResult): IHarnessFleetStateSnapshot {
 	return {
-		capturedAt: parseTimestamp(result.snapshot.captured_at),
+		capturedAt: parseRequiredTimestamp(result.snapshot.captured_at),
 		seq: result.seq,
 		subscriptionId: undefined,
 		workers: freezeWorkers(result.snapshot.workers.map(worker => normalizeWorker(worker, undefined))),
@@ -136,13 +184,49 @@ export function applyDaemonFleetDelta(
 	}
 
 	return {
-		capturedAt: parseTimestamp(delta.captured_at),
+		capturedAt: parseRequiredTimestamp(delta.captured_at),
 		seq: delta.seq,
 		subscriptionId: delta.subscription_id,
 		workers: freezeWorkers([...workers.values()]),
 		queue: normalizeQueue(delta.queue),
 		health: normalizeHealth(delta.health),
 	};
+}
+
+export function toBridgeHealthSnapshot(health: {
+	readonly mode: string;
+	readonly diskUsagePct: number;
+	readonly memoryUsagePct: number;
+	readonly walSizeBytes: number;
+	readonly activeWorkers: number;
+	readonly queueDepth: number;
+	readonly lastHealthCheck: string | undefined;
+}): IHarnessHealthSnapshot {
+	return {
+		mode: health.mode,
+		diskUsagePct: health.diskUsagePct,
+		memoryUsagePct: health.memoryUsagePct,
+		walSizeBytes: Math.max(0, health.walSizeBytes),
+		activeWorkers: Math.max(0, health.activeWorkers),
+		queueDepth: Math.max(0, health.queueDepth),
+		lastHealthCheck: parseOptionalTimestamp(health.lastHealthCheck),
+	};
+}
+
+export function healthSnapshotFromDaemonResult(result: IHealthResult): IHarnessHealthSnapshot {
+	return normalizeHealth(result.health);
+}
+
+export function healthSnapshotFromDaemonUpdate(update: IHealthUpdateNotification): IHarnessHealthSnapshot {
+	return toBridgeHealthSnapshot({
+		mode: update.mode,
+		diskUsagePct: update.disk_usage_pct,
+		memoryUsagePct: update.memory_usage_pct,
+		walSizeBytes: update.wal_size_bytes,
+		activeWorkers: update.active_workers,
+		queueDepth: update.queue_depth,
+		lastHealthCheck: update.last_health_check,
+	});
 }
 
 export function toPresentationFleet(state: IHarnessFleetStateSnapshot): AtlasModel.IFleetState {
@@ -196,43 +280,92 @@ export function toPresentationFleet(state: IHarnessFleetStateSnapshot): AtlasMod
 	};
 }
 
-export function toPresentationHealth(state: IHarnessFleetStateSnapshot): AtlasModel.IHealthState {
-	const health = state.health;
-	const mode = normalizePoolMode(health.mode);
+export function toPresentationHealth(
+	state: IHarnessFleetStateSnapshot,
+	healthState: IHarnessHealthSnapshot = state.health,
+): AtlasModel.IHealthState {
+	const mode = normalizePoolMode(healthState.mode);
 
 	let attentionLevel = ATTENTION.idle;
 	if (mode !== POOL_MODE.normal) {
 		attentionLevel = ATTENTION.needsAction;
 	} else if (state.queue.mergeConflicts > 0) {
 		attentionLevel = ATTENTION.needsAction;
-	} else if (health.activeWorkers > 0 || health.queueDepth > 0 || state.queue.pendingWorkspaceEvents > 0) {
+	} else if (healthState.activeWorkers > 0 || healthState.queueDepth > 0 || state.queue.pendingWorkspaceEvents > 0) {
 		attentionLevel = ATTENTION.active;
 	}
 
 	return {
 		mode,
-		diskUsagePct: health.diskUsagePct,
-		memoryUsagePct: health.memoryUsagePct,
-		walSizeBytes: health.walSizeBytes,
-		activeWorkers: health.activeWorkers,
-		queueDepth: health.queueDepth,
+		diskUsagePct: healthState.diskUsagePct,
+		memoryUsagePct: healthState.memoryUsagePct,
+		walSizeBytes: healthState.walSizeBytes,
+		activeWorkers: healthState.activeWorkers,
+		queueDepth: healthState.queueDepth,
 		attentionLevel,
-		lastHealthCheck: health.lastHealthCheck,
+		lastHealthCheck: healthState.lastHealthCheck,
 	};
 }
 
-function normalizeWorker(worker: IFleetWorkerState, worktreePath: string | undefined): IHarnessWorkerRecord {
+export function toPresentationObjectives(records: readonly IObjectiveRecord[]): readonly AtlasModel.IObjectiveState[] {
+	return Object.freeze(records.map(record => toPresentationObjective(record)));
+}
+
+export function toPresentationReviewGates(records: readonly IReviewCandidateRecord[]): readonly AtlasModel.IReviewGateState[] {
+	return Object.freeze(records.map(record => toPresentationReviewGate(record)));
+}
+
+export function toPresentationMergeEntries(records: readonly IMergeQueueRecord[]): readonly AtlasModel.IMergeEntry[] {
+	return Object.freeze(records.map(record => toPresentationMergeEntry(record)));
+}
+
+export function toPresentationTasks(
+	taskTrees: readonly ITaskTreeResult[],
+	workers: readonly IHarnessWorkerRecord[],
+): readonly AtlasModel.ITaskState[] {
+	const assignedWorkers = latestWorkerByTaskId(workers);
+	const taskStates = new Map<string, AtlasModel.ITaskState>();
+
+	for (const tree of taskTrees) {
+		const objectiveId = tree.objective?.spec.objective_id;
+		for (const node of tree.nodes) {
+			const assignedWorker = assignedWorkers.get(node.task.task_id);
+			taskStates.set(node.task.task_id, toPresentationTaskFromTreeNode(node, objectiveId, assignedWorker));
+		}
+	}
+
+	return Object.freeze([...taskStates.values()]);
+}
+
+export function toPresentationTaskFromDetail(
+	detail: ITaskDetail,
+	workers: readonly IHarnessWorkerRecord[],
+): AtlasModel.ITaskState {
+	const assignedWorker = latestWorkerByTaskId(workers).get(detail.task.task_id);
+	return toPresentationTask(detail.task, detail.objective?.spec.objective_id, detail.latest_dispatch, assignedWorker);
+}
+
+export function toBridgeTaskTree(result: ITaskTreeResult): IHarnessTaskTree {
 	return {
-		dispatchId: worker.dispatch_id,
-		taskId: worker.task_id,
-		roleId: worker.role_id,
-		state: worker.state,
-		handoffType: worker.handoff_type,
-		pid: worker.pid,
-		asi: worker.asi,
-		startedAt: parseTimestamp(worker.started_at),
-		lastHeartbeatAt: parseTimestamp(worker.last_heartbeat_at),
-		worktreePath,
+		rootTaskId: result.root_task_id,
+		objectiveId: result.objective?.spec.objective_id,
+		nodes: Object.freeze(result.nodes.map(node => toBridgeTaskLineageNode(node))),
+	};
+}
+
+export function toBridgeTaskLineageNode(node: ITaskTreeNodeDetail): IHarnessTaskLineageNode {
+	return {
+		taskId: node.task.task_id,
+		parentTaskId: node.task.parent_task_id ?? undefined,
+		depth: node.task.depth,
+		status: node.task.status,
+		aggregationStrategy: node.task.aggregation_strategy ?? undefined,
+		dispatchId: node.latest_dispatch?.dispatch_id,
+		roleId: node.latest_dispatch?.role_id,
+		priority: node.latest_dispatch?.priority,
+		handoffType: node.latest_dispatch?.handoff_type,
+		createdAt: parseRequiredTimestamp(node.task.created_at),
+		completedAt: parseOptionalTimestamp(node.task.completed_at),
 	};
 }
 
@@ -258,8 +391,8 @@ export function toBridgeWorkerRecord(
 		handoffType: worker.handoffType,
 		pid: worker.pid,
 		asi: worker.asi,
-		startedAt: parseTimestamp(worker.startedAt),
-		lastHeartbeatAt: parseTimestamp(worker.lastHeartbeatAt),
+		startedAt: parseRequiredTimestamp(worker.startedAt),
+		lastHeartbeatAt: parseRequiredTimestamp(worker.lastHeartbeatAt),
 		worktreePath: worker.worktreePath,
 	};
 }
@@ -278,23 +411,18 @@ export function toBridgeQueueSnapshot(queue: {
 	};
 }
 
-export function toBridgeHealthSnapshot(health: {
-	readonly mode: string;
-	readonly diskUsagePct: number;
-	readonly memoryUsagePct: number;
-	readonly walSizeBytes: number;
-	readonly activeWorkers: number;
-	readonly queueDepth: number;
-	readonly lastHealthCheck: string | undefined;
-}): IHarnessHealthSnapshot {
+function normalizeWorker(worker: IFleetWorkerState, worktreePath: string | undefined): IHarnessWorkerRecord {
 	return {
-		mode: health.mode,
-		diskUsagePct: health.diskUsagePct,
-		memoryUsagePct: health.memoryUsagePct,
-		walSizeBytes: health.walSizeBytes,
-		activeWorkers: health.activeWorkers,
-		queueDepth: health.queueDepth,
-		lastHealthCheck: health.lastHealthCheck ? parseTimestamp(health.lastHealthCheck) : undefined,
+		dispatchId: worker.dispatch_id,
+		taskId: worker.task_id,
+		roleId: worker.role_id,
+		state: worker.state,
+		handoffType: worker.handoff_type,
+		pid: worker.pid,
+		asi: worker.asi,
+		startedAt: parseRequiredTimestamp(worker.started_at),
+		lastHeartbeatAt: parseRequiredTimestamp(worker.last_heartbeat_at),
+		worktreePath,
 	};
 }
 
@@ -315,7 +443,7 @@ function normalizeHealth(health: IDaemonHealthState): IHarnessHealthSnapshot {
 		walSizeBytes: health.wal_size_bytes,
 		activeWorkers: health.active_workers,
 		queueDepth: health.queue_depth,
-		lastHealthCheck: parseTimestamp(health.last_health_check),
+		lastHealthCheck: parseRequiredTimestamp(health.last_health_check),
 	};
 }
 
@@ -336,6 +464,144 @@ function toPresentationAgent(worker: IHarnessWorkerRecord): AtlasModel.IAgentSta
 		timeInState: 0,
 		attentionLevel: toAgentAttention(status),
 	};
+}
+
+function toPresentationObjective(record: IObjectiveRecord): AtlasModel.IObjectiveState {
+	const status = toPresentationObjectiveStatus(record.status);
+	return {
+		objectiveId: record.spec.objective_id,
+		problemStatement: record.spec.problem_statement,
+		playbookIds: freezeStrings(record.spec.playbook_ids),
+		desiredOutcomes: freezeStrings(record.spec.desired_outcomes),
+		constraints: freezeStrings(record.spec.constraints),
+		contextPaths: freezeStrings(record.spec.context_paths),
+		successCriteria: freezeStrings(record.spec.success_criteria),
+		operatorNotes: freezeStrings(record.spec.operator_notes),
+		priority: toPresentationDispatchPriority(record.spec.priority),
+		status,
+		rootTaskId: record.root_task_id,
+		resumeCount: record.resume_count,
+		maxResumeCycles: record.max_resume_cycles,
+		maxParallelWorkers: record.spec.max_parallel_workers,
+		costSpent: 0,
+		costCeiling: record.spec.budget_ceiling_usd,
+		attentionLevel: toObjectiveAttention(status),
+		createdAt: parseRequiredTimestamp(record.created_at),
+		updatedAt: parseRequiredTimestamp(record.updated_at),
+		completedAt: parseOptionalTimestamp(record.completed_at),
+	};
+}
+
+function toPresentationReviewGate(record: IReviewCandidateRecord): AtlasModel.IReviewGateState {
+	const judgeDecision = toPresentationJudgeDecision(record.judge_decision ?? undefined);
+	return {
+		dispatchId: record.dispatch_id,
+		taskId: record.task_id,
+		roleId: record.role_id,
+		candidateBranch: record.candidate_branch,
+		baseRef: record.base_ref,
+		baseHeadSha: record.base_head_sha,
+		mergeBaseSha: record.merge_base_sha,
+		reviewedHeadSha: record.reviewed_head_sha,
+		commitShas: freezeStrings(record.commit_shas),
+		workingTreeClean: record.working_tree_clean,
+		reviewState: toPresentationReviewState(record.review_state),
+		judgeDecision,
+		reviewedByRole: record.reviewed_by_role ?? undefined,
+		reviewedAt: parseOptionalTimestamp(record.reviewed_at),
+		promotionState: toPresentationPromotionState(record.promotion_state),
+		promotionAuthorizedAt: parseOptionalTimestamp(record.promotion_authorized_at),
+		promotionAuthorizedByRole: record.promotion_authorized_by_role ?? undefined,
+		integrationState: toPresentationIntegrationState(record.integration_state),
+		mergedSha: record.merged_sha ?? undefined,
+		mergeExecutorId: record.merge_executor_id ?? undefined,
+		stateReason: record.state_reason ?? undefined,
+		attentionLevel: toReviewAttention(record),
+		createdAt: parseRequiredTimestamp(record.created_at),
+		updatedAt: parseRequiredTimestamp(record.updated_at),
+	};
+}
+
+function toPresentationMergeEntry(record: IMergeQueueRecord): AtlasModel.IMergeEntry {
+	return {
+		dispatchId: record.dispatch_id,
+		taskId: record.task_id,
+		worktreePath: record.worktree_path,
+		candidateBranch: record.candidate_branch,
+		baseRef: record.base_ref,
+		baseHeadSha: record.base_head_sha,
+		mergeBaseSha: record.merge_base_sha,
+		reviewedHeadSha: record.reviewed_head_sha,
+		priority: record.priority,
+		status: normalizeMergeStatus(record.status),
+		mergeSha: record.merge_sha ?? undefined,
+		conflictDetails: record.conflict_details ?? undefined,
+		affectedPaths: record.affected_paths ? freezeStrings(record.affected_paths) : undefined,
+		judgeDecision: toPresentationJudgeDecision(record.judge_decision ?? undefined),
+		reviewedByRole: record.reviewed_by_role ?? undefined,
+		reviewedAt: parseOptionalTimestamp(record.reviewed_at),
+		promotionAuthorizedAt: parseOptionalTimestamp(record.promotion_authorized_at),
+		promotionAuthorizedByRole: record.promotion_authorized_by_role ?? undefined,
+		mergeExecutorId: record.merge_executor_id ?? undefined,
+		mergedAt: parseOptionalTimestamp(record.merged_at),
+		blockedReason: record.blocked_reason ?? undefined,
+		attentionLevel: toMergeAttention(record),
+		enqueuedAt: parseRequiredTimestamp(record.enqueued_at),
+	};
+}
+
+function toPresentationTaskFromTreeNode(
+	node: ITaskTreeNodeDetail,
+	objectiveId: string | undefined,
+	assignedWorker: IHarnessWorkerRecord | undefined,
+): AtlasModel.ITaskState {
+	return toPresentationTask(node.task, objectiveId, node.latest_dispatch, assignedWorker);
+}
+
+function toPresentationTask(
+	task: ITaskNode,
+	objectiveId: string | undefined,
+	latestDispatch: IQueueDispatch | undefined,
+	assignedWorker: IHarnessWorkerRecord | undefined,
+): AtlasModel.ITaskState {
+	const status = toPresentationTaskStatus(task.status);
+	const currentRoleId = latestDispatch?.role_id ?? assignedWorker?.roleId ?? '';
+	return {
+		taskId: task.task_id,
+		dispatchId: latestDispatch?.dispatch_id ?? assignedWorker?.dispatchId,
+		parentTaskId: task.parent_task_id ?? undefined,
+		objectiveId,
+		roleId: currentRoleId,
+		fromRole: undefined,
+		toRole: currentRoleId || undefined,
+		summary: '',
+		handoffType: toPresentationHandoffType(latestDispatch?.handoff_type),
+		status,
+		priority: priorityToNumber(latestDispatch?.priority),
+		acceptance: Object.freeze([]),
+		constraints: Object.freeze([]),
+		artifacts: Object.freeze([]),
+		memoryKeywords: Object.freeze([]),
+		contextPaths: Object.freeze([]),
+		dependsOn: Object.freeze([]),
+		assignedAgentId: assignedWorker?.dispatchId,
+		costSpent: 0,
+		attentionLevel: toTaskAttention(status),
+		enqueuedAt: parseRequiredTimestamp(task.created_at),
+		startedAt: assignedWorker?.startedAt,
+		completedAt: parseOptionalTimestamp(task.completed_at),
+	};
+}
+
+function latestWorkerByTaskId(workers: readonly IHarnessWorkerRecord[]): Map<string, IHarnessWorkerRecord> {
+	const result = new Map<string, IHarnessWorkerRecord>();
+	for (const worker of workers) {
+		const current = result.get(worker.taskId);
+		if (!current || current.startedAt <= worker.startedAt) {
+			result.set(worker.taskId, worker);
+		}
+	}
+	return result;
 }
 
 function toPresentationStatus(state: IFleetWorkerState['state']): AgentStatus {
@@ -394,26 +660,202 @@ function normalizePoolMode(mode: string): PoolMode {
 	switch (mode) {
 		// Phase 0b presentation state does not expose an "unknown" pool mode, so
 		// fail closed to a degraded state instead of rendering unverified health as normal.
-		case 'unknown':
-			return POOL_MODE.paused;
 		case 'nats_down':
 			return POOL_MODE.natsDown;
 		case 'disk_pressure':
 			return POOL_MODE.diskPressure;
 		case 'cost_ceiling':
 			return POOL_MODE.costCeiling;
-		case 'paused':
-			return POOL_MODE.paused;
 		case 'normal':
 			return POOL_MODE.normal;
+		case 'unknown':
+		case 'paused':
 		default:
 			return POOL_MODE.paused;
 	}
 }
 
-function parseTimestamp(value: string): number {
+function toPresentationObjectiveStatus(status: IObjectiveRecord['status']): ObjectiveStatus {
+	switch (status) {
+		case 'planning':
+			return OBJECTIVE_STATUS.planning;
+		case 'executing':
+			return OBJECTIVE_STATUS.executing;
+		case 'reviewing':
+			return OBJECTIVE_STATUS.reviewing;
+		case 'completed':
+			return OBJECTIVE_STATUS.completed;
+		case 'failed':
+			return OBJECTIVE_STATUS.failed;
+		case 'open':
+		default:
+			return OBJECTIVE_STATUS.open;
+	}
+}
+
+function toObjectiveAttention(status: ObjectiveStatus): AttentionLevel {
+	switch (status) {
+		case OBJECTIVE_STATUS.failed:
+			return ATTENTION.critical;
+		case OBJECTIVE_STATUS.reviewing:
+			return ATTENTION.needsAction;
+		case OBJECTIVE_STATUS.planning:
+		case OBJECTIVE_STATUS.executing:
+			return ATTENTION.active;
+		case OBJECTIVE_STATUS.completed:
+			return ATTENTION.completed;
+		case OBJECTIVE_STATUS.open:
+		default:
+			return ATTENTION.idle;
+	}
+}
+
+function toPresentationTaskStatus(status: ITaskNode['status']): TaskStatus {
+	switch (status) {
+		case 'running':
+			return TASK_STATUS.executing;
+		case 'blocked':
+			return TASK_STATUS.blocked;
+		case 'completed':
+			return TASK_STATUS.completed;
+		case 'failed':
+			return TASK_STATUS.failed;
+		case 'cancelled':
+			return TASK_STATUS.cancelled;
+		case 'pending':
+		default:
+			return TASK_STATUS.queued;
+	}
+}
+
+function toTaskAttention(status: TaskStatus): AttentionLevel {
+	switch (status) {
+		case TASK_STATUS.failed:
+			return ATTENTION.critical;
+		case TASK_STATUS.blocked:
+		case TASK_STATUS.reviewing:
+			return ATTENTION.needsAction;
+		case TASK_STATUS.executing:
+			return ATTENTION.active;
+		case TASK_STATUS.completed:
+			return ATTENTION.completed;
+		case TASK_STATUS.queued:
+		case TASK_STATUS.cancelled:
+		default:
+			return ATTENTION.idle;
+	}
+}
+
+function normalizeMergeStatus(status: string): MergeStatus {
+	switch (status) {
+		case 'merge_started':
+			return MERGE_STATUS.mergeStarted;
+		case 'merged':
+			return MERGE_STATUS.merged;
+		case 'merge_blocked':
+			return MERGE_STATUS.mergeBlocked;
+		case 'abandoned':
+			return MERGE_STATUS.abandoned;
+		case 'queued':
+		case 'pending':
+		default:
+			return MERGE_STATUS.pending;
+	}
+}
+
+function toPresentationDispatchPriority(priority: IQueueDispatch['priority']): AtlasModel.IObjectiveState['priority'] {
+	return priority as AtlasModel.IObjectiveState['priority'];
+}
+
+function toPresentationReviewState(state: IReviewCandidateRecord['review_state']): AtlasModel.IReviewGateState['reviewState'] {
+	return state as AtlasModel.IReviewGateState['reviewState'];
+}
+
+function toPresentationPromotionState(state: IReviewCandidateRecord['promotion_state']): AtlasModel.IReviewGateState['promotionState'] {
+	return state as AtlasModel.IReviewGateState['promotionState'];
+}
+
+function toPresentationIntegrationState(state: IReviewCandidateRecord['integration_state']): AtlasModel.IReviewGateState['integrationState'] {
+	return state as AtlasModel.IReviewGateState['integrationState'];
+}
+
+function toPresentationJudgeDecision(
+	decision: IReviewCandidateRecord['judge_decision'] | IMergeQueueRecord['judge_decision'] | undefined,
+): AtlasModel.ReviewDecision | undefined {
+	return decision as AtlasModel.ReviewDecision | undefined;
+}
+
+function toPresentationHandoffType(handoffType: IQueueDispatch['handoff_type'] | undefined): AtlasModel.ITaskState['handoffType'] {
+	return handoffType as AtlasModel.ITaskState['handoffType'];
+}
+
+function toReviewAttention(record: IReviewCandidateRecord): AttentionLevel {
+	if (record.judge_decision === 'no-go' || record.review_state === 'review_blocked' || record.integration_state === 'merge_blocked') {
+		return ATTENTION.critical;
+	}
+	if (record.review_state === 'awaiting_review'
+		|| record.promotion_state === 'promotion_requested'
+		|| record.integration_state === 'queued') {
+		return ATTENTION.needsAction;
+	}
+	if (record.integration_state === 'merged') {
+		return ATTENTION.completed;
+	}
+	if (record.review_state === 'review_go'
+		|| record.promotion_state === 'promotion_authorized'
+		|| record.integration_state === 'merge_started') {
+		return ATTENTION.active;
+	}
+	return ATTENTION.idle;
+}
+
+function toMergeAttention(record: IMergeQueueRecord): AttentionLevel {
+	switch (normalizeMergeStatus(record.status)) {
+		case MERGE_STATUS.mergeBlocked:
+			return ATTENTION.critical;
+		case MERGE_STATUS.pending:
+			return ATTENTION.needsAction;
+		case MERGE_STATUS.mergeStarted:
+			return ATTENTION.active;
+		case MERGE_STATUS.merged:
+			return ATTENTION.completed;
+		case MERGE_STATUS.abandoned:
+		default:
+			return ATTENTION.idle;
+	}
+}
+
+function priorityToNumber(priority: IQueueDispatch['priority'] | undefined): number {
+	switch (priority) {
+		case 'p0':
+			return 0;
+		case 'p1':
+			return 1;
+		case 'p2':
+			return 2;
+		case 'p3':
+			return 3;
+		case 'info':
+			return 4;
+		default:
+			// Phase 0b presentation still requires a numeric priority even though task tree
+			// reads do not always have a current dispatch. Use an explicit sentinel rather
+			// than pretending the task has a real dispatch priority.
+			return -1;
+	}
+}
+
+function parseRequiredTimestamp(value: string): number {
 	const parsed = Date.parse(value);
 	return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseOptionalTimestamp(value: string | null | undefined): number | undefined {
+	if (!value) {
+		return undefined;
+	}
+	const parsed = Date.parse(value);
+	return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function freezeWorkers(workers: IHarnessWorkerRecord[]): readonly IHarnessWorkerRecord[] {
@@ -423,4 +865,8 @@ function freezeWorkers(workers: IHarnessWorkerRecord[]): readonly IHarnessWorker
 
 function freezeAgents(agents: AtlasModel.IAgentState[]): readonly AtlasModel.IAgentState[] {
 	return Object.freeze(agents.slice());
+}
+
+function freezeStrings(values: readonly string[] | readonly string[] | undefined): readonly string[] {
+	return Object.freeze((values ?? []).slice());
 }

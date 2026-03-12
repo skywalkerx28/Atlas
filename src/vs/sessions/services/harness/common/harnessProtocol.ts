@@ -7,11 +7,33 @@ import type {
 	IDaemonResyncRequiredNotification,
 	IFleetDeltaNotification,
 	IFleetSnapshotResult,
+	IHealthResult,
+	IHealthUpdateNotification,
 	IHarnessInitializeParams,
 	IHarnessInitializeResult,
+	IMergeGetParams,
+	IMergeListParams,
+	IMergeListResult,
+	IMergeQueueRecord,
+	IMergeUpdateNotification,
+	IObjectiveDetail,
+	IObjectiveGetParams,
+	IObjectiveListParams,
+	IObjectiveListResult,
+	IObjectiveUpdateNotification,
 	IPingResult,
+	IReviewCandidateRecord,
+	IReviewGetParams,
+	IReviewListParams,
+	IReviewListResult,
+	IReviewUpdateNotification,
 	ISubscribeParams,
 	ISubscriptionAck,
+	ITaskDetail,
+	ITaskGetParams,
+	ITaskListResult,
+	ITaskTreeParams,
+	ITaskTreeResult,
 	IUnsubscribeParams,
 	IUnsubscribeResult,
 } from './harnessTypes.js';
@@ -23,18 +45,39 @@ export const HARNESS_SCHEMA_VERSION = '2026-03-01';
 export type HarnessJsonRpcId = number | string | null;
 export type HarnessClientRequestId = number;
 
-// Public JSON-RPC surface on the current harness branch. Internal stream classifications
-// in syntropic-daemon/streams.rs mention future topics, but they are not subscribable here yet.
+// Public JSON-RPC surface on the current harness branch.
 export type HarnessDaemonRequestMethod =
 	| 'initialize'
 	| 'shutdown'
 	| 'daemon.ping'
 	| 'fleet.snapshot'
 	| 'fleet.subscribe'
-	| 'fleet.unsubscribe';
+	| 'fleet.unsubscribe'
+	| 'health.get'
+	| 'health.subscribe'
+	| 'health.unsubscribe'
+	| 'objective.list'
+	| 'objective.get'
+	| 'objective.subscribe'
+	| 'objective.unsubscribe'
+	| 'review.list'
+	| 'review.get'
+	| 'review.subscribe'
+	| 'review.unsubscribe'
+	| 'merge.list'
+	| 'merge.get'
+	| 'merge.subscribe'
+	| 'merge.unsubscribe'
+	| 'task.get'
+	| 'task.list'
+	| 'task.tree';
 
 export type HarnessDaemonNotificationMethod =
 	| 'fleet.delta'
+	| 'health.update'
+	| 'objective.update'
+	| 'review.update'
+	| 'merge.update'
 	| 'daemon.resync_required';
 
 export const HARNESS_REQUIRED_DAEMON_METHODS: readonly HarnessDaemonRequestMethod[] = Object.freeze([
@@ -43,6 +86,24 @@ export const HARNESS_REQUIRED_DAEMON_METHODS: readonly HarnessDaemonRequestMetho
 	'fleet.snapshot',
 	'fleet.subscribe',
 	'fleet.unsubscribe',
+	'health.get',
+	'health.subscribe',
+	'health.unsubscribe',
+	'objective.list',
+	'objective.get',
+	'objective.subscribe',
+	'objective.unsubscribe',
+	'review.list',
+	'review.get',
+	'review.subscribe',
+	'review.unsubscribe',
+	'merge.list',
+	'merge.get',
+	'merge.subscribe',
+	'merge.unsubscribe',
+	'task.get',
+	'task.list',
+	'task.tree',
 ]);
 
 export interface IHarnessJsonRpcError {
@@ -98,6 +159,24 @@ export type HarnessRequestParams<TMethod extends HarnessDaemonRequestMethod> =
 	TMethod extends 'fleet.snapshot' ? Record<string, never> :
 	TMethod extends 'fleet.subscribe' ? ISubscribeParams :
 	TMethod extends 'fleet.unsubscribe' ? IUnsubscribeParams :
+	TMethod extends 'health.get' ? Record<string, never> :
+	TMethod extends 'health.subscribe' ? ISubscribeParams :
+	TMethod extends 'health.unsubscribe' ? IUnsubscribeParams :
+	TMethod extends 'objective.list' ? IObjectiveListParams :
+	TMethod extends 'objective.get' ? IObjectiveGetParams :
+	TMethod extends 'objective.subscribe' ? ISubscribeParams :
+	TMethod extends 'objective.unsubscribe' ? IUnsubscribeParams :
+	TMethod extends 'review.list' ? IReviewListParams :
+	TMethod extends 'review.get' ? IReviewGetParams :
+	TMethod extends 'review.subscribe' ? ISubscribeParams :
+	TMethod extends 'review.unsubscribe' ? IUnsubscribeParams :
+	TMethod extends 'merge.list' ? IMergeListParams :
+	TMethod extends 'merge.get' ? IMergeGetParams :
+	TMethod extends 'merge.subscribe' ? ISubscribeParams :
+	TMethod extends 'merge.unsubscribe' ? IUnsubscribeParams :
+	TMethod extends 'task.get' ? ITaskGetParams :
+	TMethod extends 'task.list' ? Record<string, never> :
+	TMethod extends 'task.tree' ? ITaskTreeParams :
 	never;
 
 export type HarnessRequestResult<TMethod extends HarnessDaemonRequestMethod> =
@@ -107,10 +186,32 @@ export type HarnessRequestResult<TMethod extends HarnessDaemonRequestMethod> =
 	TMethod extends 'fleet.snapshot' ? IFleetSnapshotResult :
 	TMethod extends 'fleet.subscribe' ? ISubscriptionAck :
 	TMethod extends 'fleet.unsubscribe' ? IUnsubscribeResult :
+	TMethod extends 'health.get' ? IHealthResult :
+	TMethod extends 'health.subscribe' ? ISubscriptionAck :
+	TMethod extends 'health.unsubscribe' ? IUnsubscribeResult :
+	TMethod extends 'objective.list' ? IObjectiveListResult :
+	TMethod extends 'objective.get' ? IObjectiveDetail :
+	TMethod extends 'objective.subscribe' ? ISubscriptionAck :
+	TMethod extends 'objective.unsubscribe' ? IUnsubscribeResult :
+	TMethod extends 'review.list' ? IReviewListResult :
+	TMethod extends 'review.get' ? IReviewCandidateRecord :
+	TMethod extends 'review.subscribe' ? ISubscriptionAck :
+	TMethod extends 'review.unsubscribe' ? IUnsubscribeResult :
+	TMethod extends 'merge.list' ? IMergeListResult :
+	TMethod extends 'merge.get' ? IMergeQueueRecord :
+	TMethod extends 'merge.subscribe' ? ISubscriptionAck :
+	TMethod extends 'merge.unsubscribe' ? IUnsubscribeResult :
+	TMethod extends 'task.get' ? ITaskDetail :
+	TMethod extends 'task.list' ? ITaskListResult :
+	TMethod extends 'task.tree' ? ITaskTreeResult :
 	never;
 
 export type HarnessNotificationParams<TMethod extends HarnessDaemonNotificationMethod> =
 	TMethod extends 'fleet.delta' ? IFleetDeltaNotification :
+	TMethod extends 'health.update' ? IHealthUpdateNotification :
+	TMethod extends 'objective.update' ? IObjectiveUpdateNotification :
+	TMethod extends 'review.update' ? IReviewUpdateNotification :
+	TMethod extends 'merge.update' ? IMergeUpdateNotification :
 	TMethod extends 'daemon.resync_required' ? IDaemonResyncRequiredNotification :
 	never;
 
