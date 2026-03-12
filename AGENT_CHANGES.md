@@ -1,5 +1,58 @@
 # Agent Changes
 
+## Phase 6
+
+### What landed
+
+- Turned the `Reviews` section in the sessions window into the first actionable review workspace inside the existing Atlas center shell.
+- Kept review target identity distinct end-to-end:
+  - gate rows are keyed as `dispatchId + gate`
+  - merge rows are keyed as `dispatchId + merge`
+  - the center shell now reflects the selected target kind correctly even when the same dispatch has both rows
+- Added a sessions-only review action controller at `src/vs/sessions/contrib/atlasNavigation/browser/atlasReviewWorkspaceActions.ts` for local progress/error state.
+- The actionable review workspace now shows:
+  - authoritative gate state
+  - authoritative merge-lane state
+  - rooted swarm/task linkage
+  - live agent linkage when the dispatch is currently visible in fleet state
+  - read-only explanatory state when review writes are unavailable
+- Shipped the truthful write subset only:
+  - `Record Go` / `Record No-Go` -> `review.gate_verdict` as fixed `axiom-judge`
+  - `Authorize Promotion` -> `review.authorize_promotion` as fixed `axiom-planner`
+  - `Enqueue for Merge` -> `review.enqueue_merge`
+
+### Action gating shipped
+
+- The review workspace gates every action on `connectionState.supportedWriteMethods`, not just `writesEnabled`.
+- Polling mode remains read-only.
+- The browser stub remains read-only.
+- A connected daemon that lacks a specific review method now leaves only that action disabled, with a deterministic reason shown in the review workspace.
+- Failed review actions surface the daemon error locally in the center shell instead of silently failing.
+
+### Tests added or updated
+
+- `src/vs/sessions/contrib/atlasNavigation/test/node/atlasNavigationModel.test.ts`
+- `src/vs/sessions/contrib/atlasNavigation/test/node/atlasReviewWorkspaceActions.test.ts`
+
+### Verification
+
+- `git diff --check`: passed
+- `node build/checker/layersChecker.ts`: passed
+- `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run compile-check-ts-native`: failed only on pre-existing unrelated noise in `src/vs/server/node/webClientServer.ts`
+  - `src/vs/server/node/webClientServer.ts(17,84)` `TS6133` `builtinExtensionsPath`
+  - `src/vs/server/node/webClientServer.ts(29,10)` `TS6133` `IExtensionManifest`
+- Focused Phase 6 navigation/review tests:
+  - `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run test-node -- --runGlob "vs/sessions/contrib/atlasNavigation/test/node/*.test.js"`: passed (`16 passing`)
+  - In this isolated worktree, the stock node runner needed a temporary shared `node_modules` symlink plus a temporary local `out/` overlay composed of the main repo baseline build and a branch-local transpile of the touched atlas-navigation files. Those temporary artifacts were removed after verification.
+
+### Intentionally unimplemented
+
+- Any broader pre-review / inflight-review / post-review editor stack
+- Any advisory review queue action surface
+- Any deep inspector coupling for artifacts, worktrees, memory, transcript, or result packets
+- Any role picker beyond the truthful fixed canonical roles accepted by the current daemon
+- Titlebar redesign, multi-monitor work, or other later UI phases
+
 ## Phase 2 Wave D
 
 ### What landed

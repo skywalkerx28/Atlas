@@ -8,12 +8,13 @@
 import { basename } from '../../../../base/common/path.js';
 import { AgentStatus, type IAgentState } from '../../../common/model/agent.js';
 import { AttentionLevel } from '../../../common/model/attention.js';
-import { NavigationSection, EntityKind, ReviewTargetKind, type INavigationSelection } from '../../../common/model/selection.js';
+import { NavigationSection, EntityKind, ReviewTargetKind, type INavigationSelection, type IReviewSelectedEntity } from '../../../common/model/selection.js';
 import { MergeExecutionStatus, type IReviewGateState } from '../../../common/model/review.js';
 import { SwarmPhase, type ISwarmState } from '../../../common/model/swarm.js';
 import { TaskStatus, type ITaskState } from '../../../common/model/task.js';
-import { WireReviewState } from '../../../common/model/wire.js';
+import { WirePromotionState, WireReviewState } from '../../../common/model/wire.js';
 import { HarnessConnectionState, type IHarnessConnectionInfo } from '../../../services/harness/common/harnessService.js';
+import { ReviewWorkspaceActionId, type IReviewWorkspaceUiState, reviewTargetKey, unavailableReasonForWriteMethod } from './atlasReviewWorkspaceActions.js';
 
 export interface IAtlasSectionDescriptor {
 	readonly section: AtlasModel.NavigationSection;
@@ -139,6 +140,56 @@ export interface IAtlasShellModel {
 	readonly emptyMessage: string;
 	readonly stats: readonly IAtlasShellStat[];
 	readonly items: readonly IAtlasShellItem[];
+}
+
+export interface IReviewWorkspaceLink {
+	readonly id: string;
+	readonly label: string;
+	readonly target: AtlasModel.ISelectedEntity;
+}
+
+export interface IReviewWorkspaceDetail {
+	readonly label: string;
+	readonly value: string;
+	readonly attentionLevel: AttentionLevel | undefined;
+}
+
+export interface IReviewWorkspaceEntry {
+	readonly id: string;
+	readonly dispatchId: string;
+	readonly kind: ReviewTargetKind;
+	readonly title: string;
+	readonly subtitle: string;
+	readonly status: string;
+	readonly attentionLevel: AttentionLevel;
+	readonly selected: boolean;
+	readonly target: AtlasModel.ISelectedEntity;
+}
+
+export interface IReviewWorkspaceAction {
+	readonly id: ReviewWorkspaceActionId;
+	readonly label: string;
+	readonly description: string;
+	readonly enabled: boolean;
+	readonly running: boolean;
+	readonly disabledReason: string | undefined;
+	readonly emphasis: 'primary' | 'secondary' | 'danger';
+}
+
+export interface IReviewWorkspaceModel {
+	readonly title: string;
+	readonly subtitle: string;
+	readonly emptyMessage: string;
+	readonly stats: readonly IAtlasShellStat[];
+	readonly entries: readonly IReviewWorkspaceEntry[];
+	readonly details: readonly IReviewWorkspaceDetail[];
+	readonly links: readonly IReviewWorkspaceLink[];
+	readonly actions: readonly IReviewWorkspaceAction[];
+	readonly feedbackMessage: string | undefined;
+	readonly feedbackKind: 'error' | 'progress' | undefined;
+	readonly readOnlyMessage: string | undefined;
+	readonly selectedDispatchId: string | undefined;
+	readonly selectedTargetKind: ReviewTargetKind | undefined;
 }
 
 interface IAtlasStateSnapshot {
@@ -381,6 +432,129 @@ export function buildAtlasShellModel(
 		default:
 			return buildFleetShellModel(state);
 	}
+}
+
+export function buildReviewWorkspaceModel(
+	selection: INavigationSelection,
+	state: IAtlasStateSnapshot,
+	uiState: IReviewWorkspaceUiState = { targetKey: undefined, pendingAction: undefined, errorMessage: undefined },
+): IReviewWorkspaceModel {
+	const entries = buildReviewNavigationItems(state.reviewGates, state.mergeQueue, state.swarms);
+	const selectedReview = selection.entity?.kind === EntityKind.Review ? selection.entity : undefined;
+	const selectedDispatchId = selectedReview?.id;
+	const selectedTargetKind = selectedReview?.reviewTargetKind;
+	const gate = selectedDispatchId ? state.reviewGates.find(entry => entry.dispatchId === selectedDispatchId) : undefined;
+	const merge = selectedDispatchId ? state.mergeQueue.find(entry => entry.dispatchId === selectedDispatchId) : undefined;
+	const activeTargetKey = reviewTargetKey(selectedReview);
+	const pendingAction = uiState.targetKey === activeTargetKey ? uiState.pendingAction : undefined;
+	const errorMessage = uiState.targetKey === activeTargetKey ? uiState.errorMessage : undefined;
+	const taskId = gate?.taskId ?? merge?.taskId;
+	const swarm = taskId ? state.swarms.find(candidate => candidate.taskIds.includes(taskId)) : undefined;
+	const agent = selectedDispatchId ? state.fleet.agents.find(candidate => candidate.dispatchId === selectedDispatchId) : undefined;
+	const primaryKind = selectedTargetKind ?? (gate ? ReviewTargetKind.Gate : merge ? ReviewTargetKind.Merge : undefined);
+	const queueEntries = entries.map<IReviewWorkspaceEntry>(item => {
+		const target: AtlasModel.ISelectedEntity = {
+			kind: EntityKind.Review,
+			id: item.dispatchId,
+			reviewTargetKind: item.kind,
+		};
+		return {
+			id: item.id,
+			dispatchId: item.dispatchId,
+			kind: item.kind,
+			title: item.title,
+			subtitle: item.subtitle,
+			status: item.status,
+			attentionLevel: item.attentionLevel,
+			selected: selectedDispatchId === item.dispatchId && selectedTargetKind === item.kind,
+			target,
+		};
+	});
+
+	const stats = [
+		stat('Awaiting review', String(state.reviewGates.filter(entry => entry.reviewState === WireReviewState.AwaitingReview).length), AttentionLevel.NeedsAction),
+		stat('Promotion ready', String(state.reviewGates.filter(entry => entry.reviewState === WireReviewState.ReviewGo && entry.promotionState === WirePromotionState.NotRequested).length), AttentionLevel.Active),
+		stat('Merge pending', String(state.mergeQueue.filter(entry => entry.status === MergeExecutionStatus.Pending || entry.status === MergeExecutionStatus.MergeStarted).length), AttentionLevel.Active),
+		stat('Merge blocked', String(state.mergeQueue.filter(entry => entry.status === MergeExecutionStatus.MergeBlocked).length), AttentionLevel.Critical),
+	];
+
+	if (!selectedDispatchId || (!gate && !merge) || !primaryKind) {
+		return {
+			title: 'Reviews',
+			subtitle: 'Authoritative review gates and merge-lane state, with actions only when the current daemon explicitly supports them.',
+			emptyMessage: emptyMessageForConnection(state.connection, 'No review or merge queue entries are visible yet.'),
+			stats,
+			entries: queueEntries,
+			details: Object.freeze([]),
+			links: Object.freeze([]),
+			actions: buildReviewWorkspaceActions(state.connection, undefined, undefined, undefined, pendingAction),
+			feedbackMessage: errorMessage,
+			feedbackKind: errorMessage ? 'error' : undefined,
+			readOnlyMessage: 'Select a review target to inspect authoritative state and available actions.',
+			selectedDispatchId: undefined,
+			selectedTargetKind: undefined,
+		};
+	}
+
+	const integrationLabel = merge
+		? formatStateLabel(merge.status)
+		: gate
+			? formatStateLabel(gate.integrationState)
+			: '—';
+	const details: IReviewWorkspaceDetail[] = [
+		detail('Target', primaryKind === ReviewTargetKind.Gate ? 'Review gate' : 'Merge lane', undefined),
+		detail('Dispatch', selectedDispatchId, undefined),
+		detail('Task', taskId ?? '—', undefined),
+		detail('Swarm', swarm?.swarmId ?? 'Unmapped', swarm?.attentionLevel),
+		detail(primaryKind === ReviewTargetKind.Gate ? 'Role' : 'Branch', primaryKind === ReviewTargetKind.Gate ? gate?.roleId ?? '—' : merge?.candidateBranch ?? '—', undefined),
+		detail('Gate state', gate ? formatStateLabel(gate.reviewState) : '—', gate?.attentionLevel),
+		detail('Promotion', gate ? formatStateLabel(gate.promotionState) : '—', gate?.promotionState === WirePromotionState.PromotionAuthorized ? AttentionLevel.Active : undefined),
+		detail('Merge state', integrationLabel, merge?.attentionLevel ?? gate?.attentionLevel),
+	];
+
+	const reason = gate?.stateReason ?? merge?.blockedReason;
+	if (reason) {
+		details.push(detail('Reason', reason, merge?.status === MergeExecutionStatus.MergeBlocked ? AttentionLevel.Critical : undefined));
+	}
+
+	const links: IReviewWorkspaceLink[] = [];
+	if (swarm) {
+		links.push({ id: `swarm:${swarm.swarmId}`, label: 'Open swarm', target: { kind: EntityKind.Swarm, id: swarm.swarmId } });
+	}
+	if (taskId) {
+		links.push({ id: `task:${taskId}`, label: 'Open task', target: { kind: EntityKind.Task, id: taskId } });
+	}
+	if (agent) {
+		links.push({ id: `agent:${agent.dispatchId}`, label: 'Open agent', target: { kind: EntityKind.Agent, id: agent.dispatchId } });
+	}
+
+	const readOnlyMessage = buildReadOnlyMessage(state.connection, gate, merge);
+
+	return {
+		title: primaryKind === ReviewTargetKind.Merge
+			? basename(merge?.worktreePath ?? '') || merge?.candidateBranch || selectedDispatchId
+			: gate?.roleId ?? selectedDispatchId,
+		subtitle: primaryKind === ReviewTargetKind.Merge
+			? `Merge lane for dispatch ${selectedDispatchId}`
+			: `Review gate for dispatch ${selectedDispatchId}`,
+		emptyMessage: 'No review history is available for this dispatch.',
+		stats,
+		entries: queueEntries,
+		details: Object.freeze(details),
+		links: Object.freeze(links),
+		actions: buildReviewWorkspaceActions(state.connection, gate, merge, selectedReview, pendingAction),
+		feedbackMessage: pendingAction
+			? pendingLabel(pendingAction)
+			: errorMessage,
+		feedbackKind: pendingAction
+			? 'progress'
+			: errorMessage
+				? 'error'
+				: undefined,
+		readOnlyMessage,
+		selectedDispatchId,
+		selectedTargetKind,
+	};
 }
 
 function buildTasksShellModel(selection: INavigationSelection, state: IAtlasStateSnapshot): IAtlasShellModel {
@@ -707,6 +881,179 @@ function compareFleetCommandItems(left: IFleetCommandItem, right: IFleetCommandI
 		|| left.dispatchId.localeCompare(right.dispatchId);
 }
 
+function buildReviewWorkspaceActions(
+	connection: IHarnessConnectionInfo,
+	gate: AtlasModel.IReviewGateState | undefined,
+	merge: AtlasModel.IMergeEntry | undefined,
+	target: IReviewSelectedEntity | undefined,
+	pendingAction: ReviewWorkspaceActionId | undefined,
+): readonly IReviewWorkspaceAction[] {
+	const hasTarget = target !== undefined;
+	const busy = pendingAction !== undefined;
+	return Object.freeze([
+		reviewAction(
+			ReviewWorkspaceActionId.RecordGo,
+			'Record Go',
+			'Record the authoritative judge verdict as axiom-judge.',
+			'primary',
+			gateVerdictDisabledReason(connection, gate, hasTarget) ?? undefined,
+			busy,
+			pendingAction,
+		),
+		reviewAction(
+			ReviewWorkspaceActionId.RecordNoGo,
+			'Record No-Go',
+			'Record the blocking judge verdict as axiom-judge.',
+			'danger',
+			gateVerdictDisabledReason(connection, gate, hasTarget) ?? undefined,
+			busy,
+			pendingAction,
+		),
+		reviewAction(
+			ReviewWorkspaceActionId.AuthorizePromotion,
+			'Authorize Promotion',
+			'Advance a review-go dispatch into the promotion lane as axiom-planner.',
+			'secondary',
+			authorizePromotionDisabledReason(connection, gate, hasTarget) ?? undefined,
+			busy,
+			pendingAction,
+		),
+		reviewAction(
+			ReviewWorkspaceActionId.EnqueueMerge,
+			'Enqueue for Merge',
+			'Place a promotion-authorized dispatch into the authoritative merge lane.',
+			'secondary',
+			enqueueMergeDisabledReason(connection, gate, merge, hasTarget) ?? undefined,
+			busy,
+			pendingAction,
+		),
+	]);
+}
+
+function reviewAction(
+	id: ReviewWorkspaceActionId,
+	label: string,
+	description: string,
+	emphasis: 'primary' | 'secondary' | 'danger',
+	disabledReason: string | undefined,
+	busy: boolean,
+	pendingAction: ReviewWorkspaceActionId | undefined,
+): IReviewWorkspaceAction {
+	const running = pendingAction === id;
+	return {
+		id,
+		label,
+		description,
+		enabled: !busy && !disabledReason,
+		running,
+		disabledReason: running ? undefined : disabledReason,
+		emphasis,
+	};
+}
+
+function buildReadOnlyMessage(
+	connection: IHarnessConnectionInfo,
+	gate: AtlasModel.IReviewGateState | undefined,
+	merge: AtlasModel.IMergeEntry | undefined,
+): string | undefined {
+	if (!gate && !merge) {
+		return undefined;
+	}
+	if (
+		connection.supportedWriteMethods.includes('review.gate_verdict')
+		|| connection.supportedWriteMethods.includes('review.authorize_promotion')
+		|| connection.supportedWriteMethods.includes('review.enqueue_merge')
+	) {
+		return undefined;
+	}
+	return connection.mode === 'daemon' && connection.state === HarnessConnectionState.Connected
+		? 'The current daemon connection does not advertise review or merge write methods for this workspace.'
+		: 'This review workspace is read-only until a daemon connection with the required review methods is available.';
+}
+
+function gateVerdictDisabledReason(
+	connection: IHarnessConnectionInfo,
+	gate: AtlasModel.IReviewGateState | undefined,
+	hasTarget: boolean,
+): string | undefined {
+	if (!hasTarget) {
+		return 'Select a review target to record a verdict.';
+	}
+	const unsupportedReason = unavailableReasonForWriteMethod(connection, 'review.gate_verdict');
+	if (unsupportedReason) {
+		return unsupportedReason;
+	}
+	if (!gate) {
+		return 'No authoritative review gate exists for this dispatch.';
+	}
+	if (gate.reviewState !== WireReviewState.AwaitingReview) {
+		return 'This review gate is not awaiting a verdict.';
+	}
+	return undefined;
+}
+
+function authorizePromotionDisabledReason(
+	connection: IHarnessConnectionInfo,
+	gate: AtlasModel.IReviewGateState | undefined,
+	hasTarget: boolean,
+): string | undefined {
+	if (!hasTarget) {
+		return 'Select a review target to authorize promotion.';
+	}
+	const unsupportedReason = unavailableReasonForWriteMethod(connection, 'review.authorize_promotion');
+	if (unsupportedReason) {
+		return unsupportedReason;
+	}
+	if (!gate) {
+		return 'No authoritative review gate exists for this dispatch.';
+	}
+	if (gate.reviewState !== WireReviewState.ReviewGo) {
+		return 'A go verdict is required before promotion can be authorized.';
+	}
+	if (gate.promotionState !== WirePromotionState.NotRequested) {
+		return 'Promotion is no longer awaiting authorization.';
+	}
+	return undefined;
+}
+
+function enqueueMergeDisabledReason(
+	connection: IHarnessConnectionInfo,
+	gate: AtlasModel.IReviewGateState | undefined,
+	merge: AtlasModel.IMergeEntry | undefined,
+	hasTarget: boolean,
+): string | undefined {
+	if (!hasTarget) {
+		return 'Select a review target to enqueue merge.';
+	}
+	const unsupportedReason = unavailableReasonForWriteMethod(connection, 'review.enqueue_merge');
+	if (unsupportedReason) {
+		return unsupportedReason;
+	}
+	if (!gate) {
+		return 'No authoritative review gate exists for this dispatch.';
+	}
+	if (gate.promotionState !== WirePromotionState.PromotionAuthorized) {
+		return 'Promotion must be authorized before merge can be enqueued.';
+	}
+	if (merge && merge.status !== MergeExecutionStatus.Abandoned) {
+		return 'This dispatch is already in the merge lane.';
+	}
+	return undefined;
+}
+
+function pendingLabel(action: ReviewWorkspaceActionId): string {
+	switch (action) {
+		case ReviewWorkspaceActionId.RecordGo:
+			return 'Recording go verdict…';
+		case ReviewWorkspaceActionId.RecordNoGo:
+			return 'Recording no-go verdict…';
+		case ReviewWorkspaceActionId.AuthorizePromotion:
+			return 'Authorizing promotion…';
+		case ReviewWorkspaceActionId.EnqueueMerge:
+			return 'Enqueuing merge…';
+	}
+}
+
 function highestAttention(levels: readonly AttentionLevel[], fallback: AttentionLevel = AttentionLevel.Idle): AttentionLevel {
 	let current = fallback;
 	for (const level of levels) {
@@ -723,6 +1070,10 @@ function stat(label: string, value: string, attentionLevel: AttentionLevel | und
 
 function reviewItemId(dispatchId: string, kind: ReviewTargetKind): string {
 	return `${kind}:${dispatchId}`;
+}
+
+function detail(label: string, value: string, attentionLevel: AttentionLevel | undefined): IReviewWorkspaceDetail {
+	return { label, value, attentionLevel };
 }
 
 function isMergeAttentionEntry(entry: AtlasModel.IMergeEntry): boolean {

@@ -225,22 +225,28 @@ The shipped Fleet Command wave lives inside the existing Atlas navigation center
 - Each row pivots through `IFleetManagementService` into the existing `Agent`, `Tasks`, or `Reviews` sections.
 - No write controls, context menus, or deep inspector panes ship in this wave.
 
-### Phase 4: Review Surfaces
+### Phase 6: Review Workspace
 
-**New contribution**: `sessions/contrib/review/`
+The shipped review wave stays inside the existing `sessions/contrib/atlasNavigation/` surface. Atlas does not add a separate `reviewService.ts` or dedicated pre/inflight/post review editor contribution yet.
 
-```
-sessions/contrib/review/
-├── common/
-│   └── reviewService.ts           IAtlasReviewService (coordinates all review phases)
-├── browser/
-│   ├── review.contribution.ts
-│   ├── preReview/                 Task spec, plan preview, risk, policy
-│   ├── inflightReview/            Live transcript, steering, cost
-│   └── postReview/                Diff, verdict, spec compliance, batch workflow
-```
+What ships now:
 
-The existing `changesView` and `codeReview` contributions provide a foundation for the diff and review toolbar.
+- the `Reviews` left-rail section remains keyed by authoritative review-gate and merge-lane entries
+- gate and merge targets for the same dispatch stay distinct via `dispatchId + reviewTargetKind`
+- the center shell renders a focused actionable review workspace:
+  - target summary
+  - authoritative gate/merge state
+  - swarm/task/agent pivots
+  - local progress/error feedback
+  - action bar gated by `connectionState.supportedWriteMethods`
+
+Shipped review actions:
+
+- `review.gate_verdict` via fixed `axiom-judge`
+- `review.authorize_promotion` via fixed `axiom-planner`
+- `review.enqueue_merge`
+
+Polling mode and the browser stub remain read-only, and deeper review editors remain later work.
 
 ### Future Center Stage Modes
 

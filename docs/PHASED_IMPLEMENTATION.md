@@ -1689,158 +1689,84 @@ No write buttons, pause/cancel/review/merge actions, or fake deep inspector pane
 
 ### Objective
 
-Build the three review surfaces (pre-execution, in-flight, post-execution) that are the highest-leverage operator interaction in the factory.
+Turn the existing `Reviews` section in the sessions window into the first real actionable review workspace, backed by the authoritative review-gate and merge-lane state plus the shipped daemon review write subset.
 
 ### Prerequisites
 
-Phase 3 (review state observables), Phase 5 (agent card for in-flight view).
+Phase 4 (swarm-first navigation shell), Phase 5 (Fleet Command), Phase 2 Wave D (review/merge write delegation).
 
 ### Deliverables
 
 ```
-src/vs/sessions/contrib/review/
-├── common/
-│   └── reviewService.ts              IAtlasReviewService (coordinates all review phases)
-├── browser/
-│   ├── review.contribution.ts
-│   ├── preReview/
-│   │   ├── preReviewEditor.ts        EditorPane: task spec, plan preview, risk, approve/reject
-│   │   └── preReviewEditorInput.ts
-│   ├── inflightReview/
-│   │   ├── inflightReviewEditor.ts   EditorPane: live transcript + live diff split
-│   │   └── inflightReviewEditorInput.ts
-│   └── postReview/
-│       ├── postReviewEditor.ts       EditorPane: criteria, verdict, diff, evidence, batch actions
-│       ├── postReviewEditorInput.ts
-│       └── batchReviewController.ts  Auto-advance through review queue
+src/vs/sessions/contrib/atlasNavigation/browser/
+├── atlasNavigationModel.ts           Actionable review workspace view-model + per-target action state
+├── atlasCenterShellViewPane.ts       Reviews center-shell renderer + local progress/error feedback
+├── atlasReviewWorkspaceActions.ts    Sessions-only review action controller (fixed canonical roles)
+└── media/
+    └── atlasCenterShellViewPane.css  Review workspace layout and action styling
 ```
 
 ### Implementation Steps
 
-#### 6.1 — IAtlasReviewService
+#### 6.1 — Actionable review workspace model
 
-The review service coordinates the three tiers and maps them to the three UI surfaces:
+Reuse the existing `Reviews` left-rail section and the existing Atlas center shell. The actionable workspace remains inside `sessions/contrib/atlasNavigation/`; no separate `reviewService.ts` or standalone review editor contribution ships in this wave.
 
-| UI Surface | Primary Data Tier | Secondary Data |
-|---|---|---|
-| Pre-Execution Review | Task spec + plan (from `ITaskState` + task hierarchy) | Advisory queue score (Tier 1) for risk/priority hint |
-| In-Flight Review | Live agent activity stream | Gate state (Tier 2) for current review_state |
-| Post-Execution Review | Gate state (Tier 2) — the authoritative verdict | Merge state (Tier 3) for post-approval merge progress |
+The workspace must derive its content from current Atlas bridge state only:
 
-```typescript
-// common/reviewService.ts
+- authoritative review gates (`reviewState`, `promotionState`, `integrationState`)
+- authoritative merge-lane entries
+- rooted swarm/task linkage
+- current fleet agent linkage for the selected dispatch
+- daemon connection state and `supportedWriteMethods`
 
-export const IAtlasReviewService = createDecorator<IAtlasReviewService>('atlasReviewService');
+#### 6.2 — Distinct gate vs merge targets
 
-export interface IAtlasReviewService {
-    readonly _serviceBrand: undefined;
+Review rows remain keyed by `dispatchId + reviewTargetKind`:
 
-    // Sorted review queue (Tier 1 advisory ordering applied to Tier 2 gate entries)
-    readonly pendingGates: IObservable<readonly IReviewGateState[]>;
-    readonly reviewCount: IObservable<{ pre: number; inflight: number; post: number }>;
+- `gate:<dispatchId>`
+- `merge:<dispatchId>`
 
-    // Open review surfaces
-    openPreReview(taskId: string): Promise<void>;
-    openInflightReview(dispatchId: string): Promise<void>;
-    openPostReview(dispatchId: string): Promise<void>;
+The same dispatch may surface both a gate row and a merge row simultaneously. Selection must preserve that target identity end-to-end so the left rail and center shell do not collapse both rows onto the same target.
 
-    // Gate actions (Tier 2 — delegated to IHarnessService, requires daemon)
-    recordVerdict(dispatchId: string, decision: ReviewDecision): Promise<void>;
-    authorizePromotion(dispatchId: string): Promise<void>;
+#### 6.3 — Shipped action bar
 
-    // Merge action (Tier 3 — delegated to IHarnessService, requires daemon)
-    enqueueForMerge(dispatchId: string): Promise<void>;
+The center shell becomes the first real actionable review workspace:
 
-    // Batch review
-    advanceToNext(): Promise<boolean>;  // returns false if queue empty
-    readonly batchProgress: IObservable<{ current: number; total: number }>;
-}
-```
+1. **Target summary**: dispatch, task, swarm, gate state, promotion state, merge state, role/branch
+2. **Links**: read-only pivots to owning swarm, task, and live agent when available
+3. **Action bar**: only the shipped daemon subset, and only when the selected connection advertises the exact method
+4. **Queue list**: all authoritative gate/merge entries, with the selected target highlighted
 
-#### 6.2 — Pre-execution review
+Shipped actions in this wave:
 
-Shows the task specification and plan before any agent starts working. Operator can approve, modify, or reject.
+- **Record Go** → `IHarnessService.recordGateVerdict(dispatchId, ReviewDecision.Go, 'axiom-judge')`
+- **Record No-Go** → `IHarnessService.recordGateVerdict(dispatchId, ReviewDecision.NoGo, 'axiom-judge')`
+- **Authorize Promotion** → `IHarnessService.authorizePromotion(dispatchId, 'axiom-planner')`
+- **Enqueue for Merge** → `IHarnessService.enqueueForMerge(dispatchId)`
 
-Content layout:
-1. **Header**: Task ID, priority, cost cap
-2. **Task spec**: Summary, acceptance criteria (checkbox list)
-3. **Plan preview**: Subtask DAG (if planner has decomposed)
-4. **Tool scope**: What the agent is allowed to do
-5. **Model**: Which LLM, estimated cost
-6. **Risk assessment**: Files touched, conflict potential
-7. **Actions**: Approve Plan / Modify / Reject / Skip
+Do not ship a broader role picker in this wave. The UI uses the truthful fixed canonical roles that the current daemon write surface accepts.
 
-Data source: `IHarnessService.getTask()` + task hierarchy + dispatch metadata.
+#### 6.4 — Capability gating and local feedback
 
-#### 6.3 — In-flight review
+All action gating must use `connectionState.supportedWriteMethods`, not just `writesEnabled`.
 
-Split view showing the live agent execution. Operator can steer, pause, or cancel.
+- Polling mode remains read-only.
+- Browser stub remains read-only.
+- A connected daemon that omits a specific review method must keep that action disabled with a deterministic reason.
+- Failed actions surface the daemon error locally inside the review workspace.
+- Unsupported actions must stay disabled and fail closed; no fallback write path exists.
 
-**Left pane**: Live transcript — streams from `IHarnessService.subscribeAgentActivity(dispatchId)`. Shows thinking, tool calls, file edits in a scrolling log. Auto-scrolls to bottom.
-
-**Right pane**: Live diff — shows file changes made so far. Updates as the agent makes edits. Uses the existing diff editor infrastructure from `ChangesViewPane`.
-
-**Bottom bar**: Cost ($X.XX / $cap), time elapsed, progress estimate, action buttons (Steer, Pause, Cancel, Escalate).
-
-Data source: `IHarnessService.subscribeAgentActivity()` for transcript, worktree diff for file changes.
-
-#### 6.4 — Post-execution review
-
-The primary review surface for completed work. Shows the authoritative gate state (Tier 2) and enables the operator to advance through the gate state machine.
-
-Content layout:
-1. **Header**: Dispatch ID, task summary, cost
-2. **Gate state**: Current `reviewState` / `promotionState` / `integrationState` badges (Tier 2 — authoritative)
-3. **Advisory hint**: Score, confidence, risk count from advisory queue (Tier 1 — informational only, explicitly labeled as heuristic)
-4. **Acceptance criteria**: Checkmark list from `ResultPacket.acceptance_results` (met/not-met with evidence)
-5. **Judge verdict**: `judge_decision` (Go/NoGo) with `reviewedByRole` and `reviewedAt` — from gate state, not advisory
-6. **Diff**: File list with inline diff viewer (reuse `ChangesViewPane` diff infrastructure)
-7. **Test evidence**: Test results, coverage delta
-8. **Actions** (three-step gate flow):
-   - If `reviewState == AwaitingReview`: **Record Verdict** (Go / NoGo) → calls `IHarnessService.recordGateVerdict()`
-   - If `reviewState == ReviewGo` and `promotionState == NotRequested`: **Authorize Promotion** → calls `IHarnessService.authorizePromotion()`
-   - If `promotionState == PromotionAuthorized`: **Enqueue for Merge** → calls `IHarnessService.enqueueForMerge()` (validates all gate conditions server-side)
-   - **Next ▸** (batch advance)
-
-The diff rendering reuses the existing `ChangesViewPane` contribution — it already renders file diffs with inline stats. Extend it to accept a task/dispatch scope parameter instead of always showing the active session's changes.
-
-All write actions should key off `connectionState.supportedWriteMethods`. If `writesEnabled` is false, the bridge is read-only in the current mode. If `writesEnabled` is true, only the specific shipped methods in `supportedWriteMethods` should be enabled.
-
-#### 6.5 — Batch review controller
-
-After a gate action, automatically advance to the next review item:
-
-```typescript
-// browser/postReview/batchReviewController.ts
-
-export class BatchReviewController extends Disposable {
-    private queue: IReviewGateState[] = [];
-    private currentIndex = 0;
-
-    readonly progress: IObservable<{ current: number; total: number }>;
-
-    async advanceToNext(): Promise<boolean> {
-        this.currentIndex++;
-        if (this.currentIndex >= this.queue.length) {
-            return false;
-        }
-        await this.reviewService.openPostReview(this.queue[this.currentIndex].dispatchId);
-        return true;
-    }
-}
-```
-
-Counter in the review editor header: "3 of 7 reviews remaining."
+This wave intentionally stops at the actionable review workspace. The broader pre-review, inflight review, post-review editor stack remains later work.
 
 ### Validation
 
-- Pre-review shows task spec, plan, risk assessment; action buttons disabled when writes are unavailable
-- In-flight review streams live transcript and updates diff in real-time
-- Post-review shows **gate state** (Tier 2) as the authoritative verdict, advisory score (Tier 1) as a labeled hint — never conflated
-- Gate actions follow the three-step flow: verdict → promotion → merge
-- Only the actions whose daemon methods are absent from `supportedWriteMethods` stay disabled; read-only modes still show the daemon/polling hint when `writesEnabled` is false
-- Batch review auto-advances; counter updates correctly
-- Review badges in left rail update when gate states change
+- Gate and merge rows remain distinct even when they share the same `dispatchId`
+- The center shell reflects the selected target kind correctly
+- `Record Go`, `Record No-Go`, `Authorize Promotion`, and `Enqueue for Merge` are enabled only when their exact daemon methods appear in `supportedWriteMethods`
+- Polling and browser modes stay visibly read-only
+- Action failures surface deterministic local error state inside the review workspace
+- No deep inspector/editor surfaces or unrelated write affordances ship in this wave
 
 ---
 
@@ -1852,7 +1778,7 @@ Extend the center area beyond chat to support all Atlas modes — boards, grids,
 
 ### Prerequisites
 
-Phase 4 (left rail navigation for mode entry points), Phase 5 (fleet grid), Phase 6 (review editors).
+Phase 4 (left rail navigation for mode entry points), Phase 5 (Fleet Command), Phase 6 (actionable review workspace).
 
 ### Deliverables
 

@@ -22,6 +22,11 @@
 	min-height: 0;
 }
 
+.atlas-center-shell-root-review {
+	min-height: 0;
+	overflow-y: auto;
+}
+
 .atlas-center-shell-hero {
 	display: flex;
 	flex-direction: column;
@@ -314,24 +319,228 @@
 	cursor: pointer;
 }
 
+.atlas-review-workspace-feedback,
+.atlas-review-workspace-readonly {
+	padding: 12px 14px;
+	border-radius: 14px;
+	border: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 72%, transparent);
+	font-size: 12px;
+	line-height: 1.45;
+}
+
+.atlas-review-workspace-feedback-error {
+	border-color: color-mix(in srgb, var(--vscode-editorError-foreground) 62%, transparent);
+	background: color-mix(in srgb, var(--vscode-editorError-foreground) 8%, transparent);
+}
+
+.atlas-review-workspace-feedback-progress {
+	border-color: color-mix(in srgb, var(--vscode-editorInfo-foreground) 58%, transparent);
+	background: color-mix(in srgb, var(--vscode-editorInfo-foreground) 8%, transparent);
+}
+
+.atlas-review-workspace-readonly {
+	background: color-mix(in srgb, var(--vscode-sideBar-background) 84%, transparent);
+}
+
+.atlas-review-workspace-details {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+	gap: 10px;
+}
+
+.atlas-review-workspace-detail {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 12px 14px;
+	border-radius: 14px;
+	border: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 72%, transparent);
+	background: color-mix(in srgb, var(--vscode-sideBar-background) 88%, transparent);
+}
+
+.atlas-review-workspace-detail-label {
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: color-mix(in srgb, var(--vscode-foreground) 62%, transparent);
+}
+
+.atlas-review-workspace-detail-value {
+	font-size: 13px;
+	font-weight: 600;
+	line-height: 1.4;
+	word-break: break-word;
+}
+
+.atlas-review-workspace-links {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.atlas-review-workspace-link {
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: color-mix(in srgb, var(--vscode-foreground) 82%, transparent);
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.atlas-review-workspace-link:hover {
+	color: var(--vscode-textLink-foreground);
+}
+
+.atlas-review-workspace-actions {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: 12px;
+}
+
+.atlas-review-workspace-action {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 14px;
+	border-radius: 16px;
+	border: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 72%, transparent);
+	background: color-mix(in srgb, var(--vscode-sideBar-background) 88%, transparent);
+}
+
+.atlas-review-workspace-action-primary {
+	border-color: color-mix(in srgb, var(--vscode-editorInfo-foreground) 42%, transparent);
+}
+
+.atlas-review-workspace-action-danger {
+	border-color: color-mix(in srgb, var(--vscode-editorError-foreground) 48%, transparent);
+}
+
+.atlas-review-workspace-action-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 34px;
+	padding: 0 14px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 70%, transparent);
+	background: color-mix(in srgb, var(--vscode-button-background) 86%, transparent);
+	color: var(--vscode-button-foreground);
+	font-size: 12px;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+.atlas-review-workspace-action-secondary .atlas-review-workspace-action-button {
+	background: color-mix(in srgb, var(--vscode-sideBar-background) 78%, transparent);
+	color: var(--vscode-foreground);
+}
+
+.atlas-review-workspace-action-danger .atlas-review-workspace-action-button {
+	background: color-mix(in srgb, var(--vscode-editorError-foreground) 18%, transparent);
+	color: var(--vscode-foreground);
+}
+
+.atlas-review-workspace-action-button:disabled {
+	cursor: default;
+	opacity: 0.55;
+}
+
+.atlas-review-workspace-action-detail {
+	font-size: 12px;
+	line-height: 1.45;
+	color: color-mix(in srgb, var(--vscode-foreground) 74%, transparent);
+}
+
+.atlas-review-workspace-action-disabled {
+	color: color-mix(in srgb, var(--vscode-foreground) 58%, transparent);
+}
+
+.atlas-review-workspace-queue {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-height: 0;
+}
+
+.atlas-review-workspace-section-title {
+	font-size: 14px;
+	font-weight: 700;
+}
+
+.atlas-review-workspace-queue-list {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-height: 0;
+}
+
+.atlas-review-workspace-entry {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 14px 16px;
+	border-radius: 14px;
+	border: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 72%, transparent);
+	background: color-mix(in srgb, var(--vscode-sideBar-background) 88%, transparent);
+	color: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.atlas-review-workspace-entry-selected {
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-textLink-foreground) 40%, transparent);
+}
+
+.atlas-review-workspace-entry-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.atlas-review-workspace-entry-title {
+	font-size: 13px;
+	font-weight: 700;
+}
+
+.atlas-review-workspace-entry-status {
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.atlas-review-workspace-entry-subtitle {
+	font-size: 12px;
+	line-height: 1.45;
+	color: color-mix(in srgb, var(--vscode-foreground) 72%, transparent);
+}
+
 .atlas-center-shell-item.attention-critical,
 .atlas-center-shell-stat.attention-critical,
 .atlas-fleet-command-item.attention-critical,
-.atlas-fleet-command-group-count.attention-critical {
+.atlas-fleet-command-group-count.attention-critical,
+.atlas-review-workspace-detail.attention-critical,
+.atlas-review-workspace-entry.attention-critical {
 	border-color: color-mix(in srgb, var(--vscode-editorError-foreground) 65%, transparent);
 }
 
 .atlas-center-shell-item.attention-needs-action,
 .atlas-center-shell-stat.attention-needs-action,
 .atlas-fleet-command-item.attention-needs-action,
-.atlas-fleet-command-group-count.attention-needs-action {
+.atlas-fleet-command-group-count.attention-needs-action,
+.atlas-review-workspace-detail.attention-needs-action,
+.atlas-review-workspace-entry.attention-needs-action {
 	border-color: color-mix(in srgb, var(--vscode-editorWarning-foreground) 65%, transparent);
 }
 
 .atlas-center-shell-item.attention-active,
 .atlas-center-shell-stat.attention-active,
 .atlas-fleet-command-item.attention-active,
-.atlas-fleet-command-group-count.attention-active {
+.atlas-fleet-command-group-count.attention-active,
+.atlas-review-workspace-detail.attention-active,
+.atlas-review-workspace-entry.attention-active {
 	border-color: color-mix(in srgb, var(--vscode-editorInfo-foreground) 60%, transparent);
 }
 
@@ -345,7 +554,8 @@
 	}
 
 	.atlas-fleet-command-group-heading,
-	.atlas-fleet-command-item-header {
+	.atlas-fleet-command-item-header,
+	.atlas-review-workspace-entry-header {
 		flex-direction: column;
 		align-items: flex-start;
 	}

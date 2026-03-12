@@ -10,7 +10,7 @@ import * as DOM from '../../../../base/browser/dom.js';
 import { autorun } from '../../../../base/common/observable.js';
 import { localize2 } from '../../../../nls.js';
 import { AttentionLevel } from '../../../common/model/attention.js';
-import { NavigationSection } from '../../../common/model/selection.js';
+import { EntityKind, NavigationSection, ReviewTargetKind } from '../../../common/model/selection.js';
 import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
@@ -23,13 +23,15 @@ import { IOpenerService } from '../../../../platform/opener/common/opener.js';
 import { IHoverService } from '../../../../platform/hover/browser/hover.js';
 import { IFleetManagementService } from '../../../services/fleet/common/fleetManagementService.js';
 import { IHarnessService } from '../../../services/harness/common/harnessService.js';
-import { buildAtlasShellModel, buildFleetCommandModel } from './atlasNavigationModel.js';
+import { buildAtlasShellModel, buildFleetCommandModel, buildReviewWorkspaceModel, type IReviewWorkspaceAction, type IReviewWorkspaceEntry, type IReviewWorkspaceLink, type IReviewWorkspaceModel } from './atlasNavigationModel.js';
+import { AtlasReviewWorkspaceActionController } from './atlasReviewWorkspaceActions.js';
 
 const $ = DOM.$;
 
 export class AtlasCenterShellViewPane extends ViewPane {
 
 	private bodyContainer: HTMLElement | undefined;
+	private readonly reviewWorkspaceActions: AtlasReviewWorkspaceActionController;
 
 	constructor(
 		options: IViewPaneOptions,
@@ -46,6 +48,7 @@ export class AtlasCenterShellViewPane extends ViewPane {
 		@IHarnessService private readonly harnessService: IHarnessService,
 	) {
 		super(options, keybindingService, contextMenuService, configurationService, contextKeyService, viewDescriptorService, instantiationService, openerService, themeService, hoverService);
+		this.reviewWorkspaceActions = this._register(new AtlasReviewWorkspaceActionController(harnessService));
 	}
 
 	protected override renderBody(container: HTMLElement): void {
@@ -55,6 +58,12 @@ export class AtlasCenterShellViewPane extends ViewPane {
 
 		this._register(autorun(reader => {
 			const selection = this.fleetManagementService.selection.read(reader);
+			this.reviewWorkspaceActions.setSelection(selection.section === NavigationSection.Reviews && selection.entity?.kind === EntityKind.Review ? selection.entity : undefined);
+		}));
+
+		this._register(autorun(reader => {
+			const selection = this.fleetManagementService.selection.read(reader);
+			const reviewUiState = this.reviewWorkspaceActions.uiState.read(reader);
 			const state = {
 				connection: this.harnessService.connectionState.read(reader),
 				swarms: this.harnessService.swarms.read(reader),
@@ -68,6 +77,11 @@ export class AtlasCenterShellViewPane extends ViewPane {
 
 			if (selection.section === NavigationSection.Fleet) {
 				this.renderFleetCommand(buildFleetCommandModel(state));
+				return;
+			}
+
+			if (selection.section === NavigationSection.Reviews) {
+				this.renderReviewWorkspace(buildReviewWorkspaceModel(selection, state, reviewUiState));
 				return;
 			}
 
@@ -222,6 +236,134 @@ export class AtlasCenterShellViewPane extends ViewPane {
 		metaLabel.textContent = label;
 		const metaValue = DOM.append(item, $('div.atlas-fleet-command-meta-value'));
 		metaValue.textContent = value;
+	}
+
+	private renderReviewWorkspace(model: IReviewWorkspaceModel): void {
+		if (!this.bodyContainer) {
+			return;
+		}
+
+		DOM.clearNode(this.bodyContainer);
+
+		const root = DOM.append(this.bodyContainer, $('.atlas-center-shell-root.atlas-center-shell-root-review'));
+		const hero = DOM.append(root, $('.atlas-center-shell-hero'));
+		const title = DOM.append(hero, $('h1.atlas-center-shell-title'));
+		title.textContent = model.title;
+		const subtitle = DOM.append(hero, $('div.atlas-center-shell-subtitle'));
+		subtitle.textContent = model.subtitle;
+
+		const stats = DOM.append(root, $('.atlas-center-shell-stats'));
+		for (const item of model.stats) {
+			const card = DOM.append(stats, $('.atlas-center-shell-stat'));
+			card.classList.add(attentionClass(item.attentionLevel));
+			const label = DOM.append(card, $('div.atlas-center-shell-stat-label'));
+			label.textContent = item.label;
+			const value = DOM.append(card, $('div.atlas-center-shell-stat-value'));
+			value.textContent = item.value;
+		}
+
+		if (model.feedbackMessage) {
+			const feedback = DOM.append(root, $('div.atlas-review-workspace-feedback'));
+			feedback.classList.add(model.feedbackKind === 'error' ? 'atlas-review-workspace-feedback-error' : 'atlas-review-workspace-feedback-progress');
+			feedback.textContent = model.feedbackMessage;
+		}
+
+		if (model.readOnlyMessage) {
+			const notice = DOM.append(root, $('div.atlas-review-workspace-readonly'));
+			notice.textContent = model.readOnlyMessage;
+		}
+
+		if (model.details.length > 0) {
+			const details = DOM.append(root, $('section.atlas-review-workspace-details'));
+			for (const item of model.details) {
+				const card = DOM.append(details, $('div.atlas-review-workspace-detail'));
+				card.classList.add(attentionClass(item.attentionLevel));
+				const label = DOM.append(card, $('div.atlas-review-workspace-detail-label'));
+				label.textContent = item.label;
+				const value = DOM.append(card, $('div.atlas-review-workspace-detail-value'));
+				value.textContent = item.value;
+			}
+		}
+
+		if (model.links.length > 0) {
+			const links = DOM.append(root, $('div.atlas-review-workspace-links'));
+			for (const link of model.links) {
+				this.renderReviewLink(links, link);
+			}
+		}
+
+		const actions = DOM.append(root, $('section.atlas-review-workspace-actions'));
+		for (const action of model.actions) {
+			this.renderReviewAction(actions, action, model);
+		}
+
+		if (model.entries.length === 0) {
+			const empty = DOM.append(root, $('.atlas-center-shell-empty'));
+			const emptyTitle = DOM.append(empty, $('div.atlas-center-shell-empty-title'));
+			emptyTitle.textContent = localize2('atlasCenterShell.reviewEmpty', 'No review targets').value;
+			const emptyMessage = DOM.append(empty, $('div.atlas-center-shell-empty-message'));
+			emptyMessage.textContent = model.emptyMessage;
+			return;
+		}
+
+		const queue = DOM.append(root, $('section.atlas-review-workspace-queue'));
+		const queueTitle = DOM.append(queue, $('div.atlas-review-workspace-section-title'));
+		queueTitle.textContent = localize2('atlasCenterShell.reviewQueue', 'Review targets').value;
+		const list = DOM.append(queue, $('div.atlas-review-workspace-queue-list'));
+		for (const entry of model.entries) {
+			this.renderReviewEntry(list, entry);
+		}
+	}
+
+	private renderReviewLink(container: HTMLElement, link: IReviewWorkspaceLink): void {
+		const button = DOM.append(container, $('button.atlas-review-workspace-link')) as HTMLButtonElement;
+		button.type = 'button';
+		button.textContent = link.label;
+		button.addEventListener('click', () => this.fleetManagementService.selectEntity(link.target));
+	}
+
+	private renderReviewAction(container: HTMLElement, action: IReviewWorkspaceAction, model: IReviewWorkspaceModel): void {
+		const card = DOM.append(container, $('article.atlas-review-workspace-action'));
+		card.classList.add(`atlas-review-workspace-action-${action.emphasis}`);
+		const button = DOM.append(card, $('button.atlas-review-workspace-action-button')) as HTMLButtonElement;
+		button.type = 'button';
+		button.textContent = action.running ? `${action.label}…` : action.label;
+		button.disabled = !action.enabled;
+		button.addEventListener('click', () => {
+			if (button.disabled || !model.selectedDispatchId || !model.selectedTargetKind) {
+				return;
+			}
+			void this.reviewWorkspaceActions.runAction(action.id, {
+				kind: EntityKind.Review,
+				id: model.selectedDispatchId,
+				reviewTargetKind: model.selectedTargetKind,
+			});
+		});
+
+		const detail = DOM.append(card, $('div.atlas-review-workspace-action-detail'));
+		detail.textContent = action.disabledReason ?? action.description;
+		if (action.disabledReason) {
+			detail.classList.add('atlas-review-workspace-action-disabled');
+		}
+	}
+
+	private renderReviewEntry(container: HTMLElement, entry: IReviewWorkspaceEntry): void {
+		const button = DOM.append(container, $('button.atlas-review-workspace-entry')) as HTMLButtonElement;
+		button.type = 'button';
+		button.classList.add(attentionClass(entry.attentionLevel));
+		if (entry.selected) {
+			button.classList.add('atlas-review-workspace-entry-selected');
+		}
+		button.addEventListener('click', () => this.fleetManagementService.selectReview(entry.dispatchId, entry.kind));
+
+		const header = DOM.append(button, $('div.atlas-review-workspace-entry-header'));
+		const title = DOM.append(header, $('div.atlas-review-workspace-entry-title'));
+		title.textContent = entry.title;
+		const status = DOM.append(header, $('div.atlas-review-workspace-entry-status'));
+		status.textContent = `${entry.kind === ReviewTargetKind.Gate ? 'Gate' : 'Merge'} • ${entry.status}`;
+
+		const subtitle = DOM.append(button, $('div.atlas-review-workspace-entry-subtitle'));
+		subtitle.textContent = entry.subtitle;
 	}
 }
 

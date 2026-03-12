@@ -21,9 +21,11 @@ import {
 	buildAtlasShellModel,
 	buildFleetCommandModel,
 	buildReviewNavigationItems,
+	buildReviewWorkspaceModel,
 	buildSectionDescriptors,
 	buildTaskNavigationItems,
 } from '../../browser/atlasNavigationModel.js';
+import { ReviewWorkspaceActionId } from '../../browser/atlasReviewWorkspaceActions.js';
 
 suite('AtlasNavigationModel', () => {
 	ensureNoDisposablesAreLeakedInTestSuite();
@@ -221,6 +223,156 @@ suite('AtlasNavigationModel', () => {
 		assert.strictEqual(mergeModel.subtitle, `Merge lane for dispatch ${dispatchId}`);
 		assert.deepStrictEqual(gateModel.items.map(item => item.id), ['gate:disp-shared-1', 'merge:disp-shared-1']);
 		assert.deepStrictEqual(mergeModel.items.map(item => item.id), ['gate:disp-shared-1', 'merge:disp-shared-1']);
+	});
+
+	test('builds an actionable review workspace with distinct gate and merge targets', () => {
+		const dispatchId = 'disp-review-1';
+		const state = createAtlasStateSnapshot({
+			connection: createConnectionState({
+				writesEnabled: true,
+				supportedWriteMethods: Object.freeze([
+					'review.gate_verdict',
+					'review.authorize_promotion',
+					'review.enqueue_merge',
+				]),
+				grantedCapabilities: Object.freeze(['read', 'review', 'merge']),
+			}),
+			swarms: [
+				createSwarmState({
+					swarmId: 'TASK-ROOT-1',
+					rootTaskId: 'TASK-ROOT-1',
+					taskIds: Object.freeze(['TASK-ROOT-1']),
+				}),
+			],
+			fleet: createFleetState([
+				createAgentState({
+					dispatchId,
+					taskId: 'TASK-ROOT-1',
+				}),
+			]),
+			reviewGates: [
+				createReviewGateState({
+					dispatchId,
+					taskId: 'TASK-ROOT-1',
+					roleId: 'axiom-judge',
+					reviewState: WireReviewState.ReviewGo,
+					promotionState: WirePromotionState.NotRequested,
+					integrationState: WireIntegrationState.NotReady,
+					attentionLevel: AttentionLevel.Active,
+				}),
+			],
+			mergeQueue: [
+				createMergeEntry({
+					dispatchId,
+					taskId: 'TASK-ROOT-1',
+					worktreePath: '/workspace/review-disp-1',
+					candidateBranch: 'agent/review-disp-1',
+					status: MergeExecutionStatus.Pending,
+					attentionLevel: AttentionLevel.Active,
+				}),
+			],
+		});
+
+		const gateModel = buildReviewWorkspaceModel(
+			{ section: NavigationSection.Reviews, entity: { kind: EntityKind.Review, id: dispatchId, reviewTargetKind: ReviewTargetKind.Gate } },
+			state,
+		);
+		const mergeModel = buildReviewWorkspaceModel(
+			{ section: NavigationSection.Reviews, entity: { kind: EntityKind.Review, id: dispatchId, reviewTargetKind: ReviewTargetKind.Merge } },
+			state,
+		);
+
+		assert.strictEqual(gateModel.title, 'axiom-judge');
+		assert.strictEqual(gateModel.subtitle, `Review gate for dispatch ${dispatchId}`);
+		assert.strictEqual(mergeModel.title, 'review-disp-1');
+		assert.strictEqual(mergeModel.subtitle, `Merge lane for dispatch ${dispatchId}`);
+		assert.deepStrictEqual(gateModel.entries.map(entry => ({ id: entry.id, selected: entry.selected })), [
+			{ id: `gate:${dispatchId}`, selected: true },
+			{ id: `merge:${dispatchId}`, selected: false },
+		]);
+		assert.deepStrictEqual(mergeModel.entries.map(entry => ({ id: entry.id, selected: entry.selected })), [
+			{ id: `gate:${dispatchId}`, selected: false },
+			{ id: `merge:${dispatchId}`, selected: true },
+		]);
+		assert.deepStrictEqual(gateModel.links.map(link => link.label), ['Open swarm', 'Open task', 'Open agent']);
+		assert.strictEqual(gateModel.actions.find(action => action.id === ReviewWorkspaceActionId.AuthorizePromotion)?.enabled, true);
+		assert.strictEqual(gateModel.actions.find(action => action.id === ReviewWorkspaceActionId.RecordGo)?.enabled, false);
+		assert.strictEqual(gateModel.actions.find(action => action.id === ReviewWorkspaceActionId.EnqueueMerge)?.enabled, false);
+	});
+
+	test('gates review workspace actions on supportedWriteMethods instead of writesEnabled alone', () => {
+		const dispatchId = 'disp-review-2';
+		const state = createAtlasStateSnapshot({
+			connection: createConnectionState({
+				writesEnabled: true,
+				supportedWriteMethods: Object.freeze(['review.gate_verdict']),
+				grantedCapabilities: Object.freeze(['read', 'review']),
+			}),
+			reviewGates: [
+				createReviewGateState({
+					dispatchId,
+					reviewState: WireReviewState.AwaitingReview,
+					promotionState: WirePromotionState.NotRequested,
+				}),
+			],
+		});
+
+		const model = buildReviewWorkspaceModel(
+			{ section: NavigationSection.Reviews, entity: { kind: EntityKind.Review, id: dispatchId, reviewTargetKind: ReviewTargetKind.Gate } },
+			state,
+		);
+
+		assert.strictEqual(model.actions.find(action => action.id === ReviewWorkspaceActionId.RecordGo)?.enabled, true);
+		assert.strictEqual(model.actions.find(action => action.id === ReviewWorkspaceActionId.RecordNoGo)?.enabled, true);
+		assert.strictEqual(model.actions.find(action => action.id === ReviewWorkspaceActionId.AuthorizePromotion)?.enabled, false);
+		assert.strictEqual(model.actions.find(action => action.id === ReviewWorkspaceActionId.AuthorizePromotion)?.disabledReason, 'Current harness daemon does not grant merge capability for review.authorize_promotion.');
+		assert.strictEqual(model.actions.find(action => action.id === ReviewWorkspaceActionId.EnqueueMerge)?.enabled, false);
+	});
+
+	test('keeps review workspace read-only in polling mode', () => {
+		const model = buildReviewWorkspaceModel(
+			{ section: NavigationSection.Reviews, entity: { kind: EntityKind.Review, id: 'disp-review-3', reviewTargetKind: ReviewTargetKind.Gate } },
+			createAtlasStateSnapshot({
+				connection: createConnectionState({
+					state: HarnessConnectionState.Connected,
+					mode: 'polling',
+					writesEnabled: false,
+					supportedWriteMethods: Object.freeze([]),
+				}),
+				reviewGates: [
+					createReviewGateState({
+						dispatchId: 'disp-review-3',
+						reviewState: WireReviewState.AwaitingReview,
+					}),
+				],
+			}),
+		);
+
+		assert.ok(model.readOnlyMessage);
+		assert.strictEqual(model.actions.every(action => action.enabled === false), true);
+		assert.strictEqual(model.actions.every(action => action.disabledReason === 'Harness daemon required; Atlas is in read-only mode.'), true);
+	});
+
+	test('shows a review-specific read-only notice when the daemon only exposes unrelated writes', () => {
+		const model = buildReviewWorkspaceModel(
+			{ section: NavigationSection.Reviews, entity: { kind: EntityKind.Review, id: 'disp-review-4', reviewTargetKind: ReviewTargetKind.Gate } },
+			createAtlasStateSnapshot({
+				connection: createConnectionState({
+					writesEnabled: true,
+					supportedWriteMethods: Object.freeze(['dispatch.submit']),
+					grantedCapabilities: Object.freeze(['read', 'dispatch']),
+				}),
+				reviewGates: [
+					createReviewGateState({
+						dispatchId: 'disp-review-4',
+						reviewState: WireReviewState.AwaitingReview,
+					}),
+				],
+			}),
+		);
+
+		assert.strictEqual(model.readOnlyMessage, 'The current daemon connection does not advertise review or merge write methods for this workspace.');
+		assert.strictEqual(model.actions.every(action => action.enabled === false), true);
 	});
 
 	test('builds the phase 5 fleet command surface from live fleet, health, and review pressure', () => {
