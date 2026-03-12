@@ -8,7 +8,7 @@
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { observableValue } from '../../../../base/common/observable.js';
 import { ReviewDecision } from '../../../common/model/wire.js';
-import { EntityKind, type IReviewSelectedEntity } from '../../../common/model/selection.js';
+import { EntityKind, ReviewTargetKind, type IReviewSelectedEntity } from '../../../common/model/selection.js';
 import { HarnessConnectionState, type IHarnessConnectionInfo, type IHarnessService } from '../../../services/harness/common/harnessService.js';
 import type { HarnessCapability, HarnessSupportedWriteMethod } from '../../../services/harness/common/harnessTypes.js';
 
@@ -103,6 +103,16 @@ export class AtlasReviewWorkspaceActionController extends Disposable {
 	}
 
 	async runAction(action: ReviewWorkspaceActionId, entity: IReviewSelectedEntity): Promise<boolean> {
+		const incompatibleTargetReason = unavailableReasonForActionTarget(action, entity);
+		if (incompatibleTargetReason) {
+			this._uiState.set({
+				targetKey: reviewTargetKey(entity),
+				pendingAction: undefined,
+				errorMessage: incompatibleTargetReason,
+			}, undefined, undefined);
+			return false;
+		}
+
 		const method = actionMethod(action);
 		const connection = this.harnessService.connectionState.get();
 		const unsupportedReason = unavailableReasonForWriteMethod(connection, method);
@@ -163,5 +173,24 @@ function actionMethod(action: ReviewWorkspaceActionId): HarnessSupportedWriteMet
 			return 'review.authorize_promotion';
 		case ReviewWorkspaceActionId.EnqueueMerge:
 			return 'review.enqueue_merge';
+	}
+}
+
+function unavailableReasonForActionTarget(
+	action: ReviewWorkspaceActionId,
+	entity: IReviewSelectedEntity,
+): string | undefined {
+	switch (action) {
+		case ReviewWorkspaceActionId.RecordGo:
+		case ReviewWorkspaceActionId.RecordNoGo:
+			return entity.reviewTargetKind === ReviewTargetKind.Gate
+				? undefined
+				: 'Select a review gate target to record a verdict.';
+		case ReviewWorkspaceActionId.AuthorizePromotion:
+			return entity.reviewTargetKind === ReviewTargetKind.Gate
+				? undefined
+				: 'Select a review gate target to authorize promotion.';
+		case ReviewWorkspaceActionId.EnqueueMerge:
+			return undefined;
 	}
 }

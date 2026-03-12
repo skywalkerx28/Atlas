@@ -298,6 +298,11 @@ suite('AtlasNavigationModel', () => {
 		assert.strictEqual(gateModel.actions.find(action => action.id === ReviewWorkspaceActionId.AuthorizePromotion)?.enabled, true);
 		assert.strictEqual(gateModel.actions.find(action => action.id === ReviewWorkspaceActionId.RecordGo)?.enabled, false);
 		assert.strictEqual(gateModel.actions.find(action => action.id === ReviewWorkspaceActionId.EnqueueMerge)?.enabled, false);
+		assert.strictEqual(mergeModel.actions.find(action => action.id === ReviewWorkspaceActionId.RecordGo)?.enabled, false);
+		assert.strictEqual(mergeModel.actions.find(action => action.id === ReviewWorkspaceActionId.RecordGo)?.disabledReason, 'Select a review gate target to record a verdict.');
+		assert.strictEqual(mergeModel.actions.find(action => action.id === ReviewWorkspaceActionId.RecordNoGo)?.enabled, false);
+		assert.strictEqual(mergeModel.actions.find(action => action.id === ReviewWorkspaceActionId.AuthorizePromotion)?.enabled, false);
+		assert.strictEqual(mergeModel.actions.find(action => action.id === ReviewWorkspaceActionId.AuthorizePromotion)?.disabledReason, 'Select a review gate target to authorize promotion.');
 	});
 
 	test('gates review workspace actions on supportedWriteMethods instead of writesEnabled alone', () => {

@@ -24,6 +24,8 @@
 ### Action gating shipped
 
 - The review workspace gates every action on `connectionState.supportedWriteMethods`, not just `writesEnabled`.
+- Gate-only actions now also gate on `ReviewTargetKind.Gate`:
+  - merge-selected workspaces no longer enable or dispatch `Record Go`, `Record No-Go`, or `Authorize Promotion` just because the same dispatch also has a gate
 - Polling mode remains read-only.
 - The browser stub remains read-only.
 - A connected daemon that lacks a specific review method now leaves only that action disabled, with a deterministic reason shown in the review workspace.
@@ -42,7 +44,7 @@
   - `src/vs/server/node/webClientServer.ts(17,84)` `TS6133` `builtinExtensionsPath`
   - `src/vs/server/node/webClientServer.ts(29,10)` `TS6133` `IExtensionManifest`
 - Focused Phase 6 navigation/review tests:
-  - `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run test-node -- --runGlob "vs/sessions/contrib/atlasNavigation/test/node/*.test.js"`: passed (`16 passing`)
+  - `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run test-node -- --runGlob "vs/sessions/contrib/atlasNavigation/test/node/*.test.js"`: passed (`17 passing`)
   - In this isolated worktree, the stock node runner needed a temporary shared `node_modules` symlink plus a temporary local `out/` overlay composed of the main repo baseline build and a branch-local transpile of the touched atlas-navigation files. Those temporary artifacts were removed after verification.
 
 ### Intentionally unimplemented

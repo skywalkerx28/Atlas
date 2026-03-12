@@ -889,6 +889,7 @@ function buildReviewWorkspaceActions(
 	pendingAction: ReviewWorkspaceActionId | undefined,
 ): readonly IReviewWorkspaceAction[] {
 	const hasTarget = target !== undefined;
+	const targetKind = target?.reviewTargetKind;
 	const busy = pendingAction !== undefined;
 	return Object.freeze([
 		reviewAction(
@@ -896,7 +897,7 @@ function buildReviewWorkspaceActions(
 			'Record Go',
 			'Record the authoritative judge verdict as axiom-judge.',
 			'primary',
-			gateVerdictDisabledReason(connection, gate, hasTarget) ?? undefined,
+			gateVerdictDisabledReason(connection, gate, targetKind, hasTarget) ?? undefined,
 			busy,
 			pendingAction,
 		),
@@ -905,7 +906,7 @@ function buildReviewWorkspaceActions(
 			'Record No-Go',
 			'Record the blocking judge verdict as axiom-judge.',
 			'danger',
-			gateVerdictDisabledReason(connection, gate, hasTarget) ?? undefined,
+			gateVerdictDisabledReason(connection, gate, targetKind, hasTarget) ?? undefined,
 			busy,
 			pendingAction,
 		),
@@ -914,7 +915,7 @@ function buildReviewWorkspaceActions(
 			'Authorize Promotion',
 			'Advance a review-go dispatch into the promotion lane as axiom-planner.',
 			'secondary',
-			authorizePromotionDisabledReason(connection, gate, hasTarget) ?? undefined,
+			authorizePromotionDisabledReason(connection, gate, targetKind, hasTarget) ?? undefined,
 			busy,
 			pendingAction,
 		),
@@ -974,10 +975,14 @@ function buildReadOnlyMessage(
 function gateVerdictDisabledReason(
 	connection: IHarnessConnectionInfo,
 	gate: AtlasModel.IReviewGateState | undefined,
+	targetKind: ReviewTargetKind | undefined,
 	hasTarget: boolean,
 ): string | undefined {
 	if (!hasTarget) {
 		return 'Select a review target to record a verdict.';
+	}
+	if (targetKind !== ReviewTargetKind.Gate) {
+		return 'Select a review gate target to record a verdict.';
 	}
 	const unsupportedReason = unavailableReasonForWriteMethod(connection, 'review.gate_verdict');
 	if (unsupportedReason) {
@@ -995,10 +1000,14 @@ function gateVerdictDisabledReason(
 function authorizePromotionDisabledReason(
 	connection: IHarnessConnectionInfo,
 	gate: AtlasModel.IReviewGateState | undefined,
+	targetKind: ReviewTargetKind | undefined,
 	hasTarget: boolean,
 ): string | undefined {
 	if (!hasTarget) {
 		return 'Select a review target to authorize promotion.';
+	}
+	if (targetKind !== ReviewTargetKind.Gate) {
+		return 'Select a review gate target to authorize promotion.';
 	}
 	const unsupportedReason = unavailableReasonForWriteMethod(connection, 'review.authorize_promotion');
 	if (unsupportedReason) {

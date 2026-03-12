@@ -130,6 +130,26 @@ suite('AtlasReviewWorkspaceActions', () => {
 		assert.strictEqual(controller.uiState.get().pendingAction, undefined);
 		assert.strictEqual(controller.uiState.get().errorMessage, 'daemon denied verdict');
 	});
+
+	test('fails closed when a gate-only action is invoked from a merge target', async () => {
+		const harnessService = disposables.add(new TestHarnessService(createConnectionState({
+			writesEnabled: true,
+			supportedWriteMethods: Object.freeze(['review.gate_verdict', 'review.authorize_promotion']),
+			grantedCapabilities: Object.freeze(['read', 'review', 'merge']),
+		})));
+		const controller = disposables.add(new AtlasReviewWorkspaceActionController(harnessService));
+		const mergeTarget = reviewTarget('disp-shared-1', ReviewTargetKind.Merge);
+
+		const verdictResult = await controller.runAction(ReviewWorkspaceActionId.RecordGo, mergeTarget);
+		assert.strictEqual(verdictResult, false);
+		assert.deepStrictEqual(harnessService.recordGateVerdictCalls, []);
+		assert.strictEqual(controller.uiState.get().errorMessage, 'Select a review gate target to record a verdict.');
+
+		const promotionResult = await controller.runAction(ReviewWorkspaceActionId.AuthorizePromotion, mergeTarget);
+		assert.strictEqual(promotionResult, false);
+		assert.deepStrictEqual(harnessService.authorizePromotionCalls, []);
+		assert.strictEqual(controller.uiState.get().errorMessage, 'Select a review gate target to authorize promotion.');
+	});
 });
 
 class TestHarnessService extends Disposable implements IHarnessService {
