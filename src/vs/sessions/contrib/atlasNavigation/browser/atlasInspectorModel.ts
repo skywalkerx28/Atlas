@@ -173,7 +173,7 @@ export function createLoadingAtlasInspectorModel(
 			details: buildOverviewDetails(context, state),
 			links: buildOverviewLinks(context),
 		},
-		worktree: loadingSection('Worktree'),
+		worktree: loadingSection('Worktree', { entries: Object.freeze([]) }),
 		result: { ...loadingSection('Result'), packet: undefined },
 		artifacts: { ...loadingSection('Artifacts'), dispatchId: context.dispatchId, inventory: Object.freeze([]), preview: undefined },
 		memory: { ...loadingSection('Memory'), scopeLabel: undefined, records: Object.freeze([]) },
@@ -416,7 +416,9 @@ async function loadWorktreeSection(context: IInspectorContext, harnessService: I
 				? 'No worktree state is currently available for this dispatch.'
 				: context.rootTaskId
 					? 'No rooted worktree state is currently available for this task tree.'
-					: 'Worktree state is not available for this selection.');
+					: 'Worktree state is not available for this selection.', {
+				entries: Object.freeze([]),
+			});
 		}
 		return {
 			title: 'Worktree',

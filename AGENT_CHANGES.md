@@ -1,5 +1,65 @@
 # Agent Changes
 
+## Phase 9
+
+### What landed
+
+- Replaced the generic sessions-shell header/chrome inside the Atlas center shell with an Atlas-specific operator header.
+- Kept the work sessions-only and read-only:
+  - no standard workbench titlebar override
+  - no write controls
+  - no multi-monitor work
+- The new header now surfaces:
+  - current workspace / project name
+  - current harness fabric identity when the daemon exposes it
+  - current section / selection breadcrumbs
+  - live connection / health / queue / agent / swarm attention status
+  - read-only quick pivots for `Tasks`, `Agents`, `Reviews`, and `Fleet`
+
+### Header surface shipped
+
+- left identity block:
+  - `Atlas`
+  - workspace / project name
+  - `fabric_identity.fabric_id` when available
+- center context block:
+  - current section breadcrumb
+  - selected entity context
+  - distinct `Gate` vs `Merge` review targeting preserved
+- right status strip:
+  - connection state/mode
+  - pool health mode
+  - queue depth
+  - active / blocked / failed counts
+  - critical / needs-action swarm counts
+- quick-pivot row:
+  - `Tasks`
+  - `Agents`
+  - `Reviews`
+  - `Fleet`
+
+### Contract change
+
+- `IHarnessConnectionInfo` now carries `fabricIdentity` as a read-only optional field so sessions UI can surface truthful daemon project/fabric identity without reaching into daemon internals.
+- Polling mode, browser stub mode, and error/disconnected states leave `fabricIdentity` undefined.
+
+### Tests added or updated
+
+- `src/vs/sessions/contrib/atlasNavigation/test/node/atlasNavigationModel.test.ts`
+- `src/vs/sessions/services/harness/test/node/harnessService.test.ts`
+- compatibility updates in:
+  - `src/vs/sessions/contrib/atlasNavigation/test/node/atlasInspectorModel.test.ts`
+  - `src/vs/sessions/contrib/atlasNavigation/test/node/atlasReviewWorkspaceActions.test.ts`
+  - `src/vs/sessions/services/fleet/test/node/fleetManagementService.test.ts`
+
+### Intentionally unimplemented
+
+- any objective selector or global filtering control
+- cost indicator in the header
+- pause-all / resume-all or any write controls
+- any standard workbench titlebar override
+- multi-monitor work
+
 ## Phase 8
 
 ### What landed

@@ -7,11 +7,160 @@
 	height: 100%;
 }
 
+.atlas-center-shell-frame {
+	display: grid;
+	grid-template-rows: auto minmax(0, 1fr);
+	height: 100%;
+	min-height: 0;
+}
+
+.atlas-shell-header {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	padding: 16px 22px 14px;
+	border-bottom: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 75%, transparent);
+	background:
+		radial-gradient(circle at top left, color-mix(in srgb, var(--vscode-editorInfo-foreground) 10%, transparent), transparent 34%),
+		linear-gradient(180deg, color-mix(in srgb, var(--vscode-sideBar-background) 96%, transparent), color-mix(in srgb, var(--vscode-sideBar-background) 89%, transparent));
+}
+
+.atlas-shell-header-top {
+	display: grid;
+	grid-template-columns: minmax(180px, 0.95fr) minmax(240px, 1.15fr) minmax(280px, 1.2fr);
+	gap: 16px;
+	align-items: start;
+}
+
+.atlas-shell-header-identity,
+.atlas-shell-header-context {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+}
+
+.atlas-shell-header-brand {
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: color-mix(in srgb, var(--vscode-foreground) 58%, transparent);
+}
+
+.atlas-shell-header-project,
+.atlas-shell-header-context-title {
+	font-size: 17px;
+	font-weight: 700;
+	line-height: 1.2;
+}
+
+.atlas-shell-header-fabric,
+.atlas-shell-header-context-subtitle {
+	font-size: 12px;
+	line-height: 1.4;
+	color: color-mix(in srgb, var(--vscode-foreground) 72%, transparent);
+}
+
+.atlas-shell-header-breadcrumbs {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: color-mix(in srgb, var(--vscode-foreground) 64%, transparent);
+}
+
+.atlas-shell-header-breadcrumb-separator {
+	color: color-mix(in srgb, var(--vscode-foreground) 44%, transparent);
+}
+
+.atlas-shell-header-status {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
+.atlas-shell-header-status-chip {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 88px;
+	padding: 8px 10px;
+	border-radius: 12px;
+	border: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 74%, transparent);
+	background: color-mix(in srgb, var(--vscode-sideBar-background) 88%, transparent);
+}
+
+.atlas-shell-header-status-label {
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: color-mix(in srgb, var(--vscode-foreground) 64%, transparent);
+}
+
+.atlas-shell-header-status-value {
+	font-size: 12px;
+	font-weight: 700;
+	line-height: 1.25;
+}
+
+.atlas-shell-header-pivots {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.atlas-shell-header-pivot {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	padding: 8px 12px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 72%, transparent);
+	background: color-mix(in srgb, var(--vscode-sideBar-background) 84%, transparent);
+	color: inherit;
+	cursor: pointer;
+}
+
+.atlas-shell-header-pivot-selected {
+	outline: 1px solid color-mix(in srgb, var(--vscode-focusBorder) 78%, transparent);
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 28%, transparent);
+}
+
+.atlas-shell-header-pivot-label {
+	font-size: 12px;
+	font-weight: 700;
+}
+
+.atlas-shell-header-pivot-count {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 22px;
+	height: 22px;
+	padding: 0 7px;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--vscode-sideBar-background) 72%, transparent);
+	font-size: 11px;
+	font-weight: 700;
+}
+
 .atlas-center-shell-layout {
 	display: grid;
 	grid-template-columns: minmax(0, 2.2fr) minmax(280px, 0.95fr);
 	gap: 0;
 	height: 100%;
+	min-height: 0;
+}
+
+.atlas-center-shell-layout-single {
+	grid-template-columns: minmax(0, 1fr);
 }
 
 .atlas-center-shell-main-region {
@@ -1087,6 +1236,14 @@
 }
 
 @media (max-width: 900px) {
+	.atlas-shell-header-top {
+		grid-template-columns: 1fr;
+	}
+
+	.atlas-shell-header-status {
+		justify-content: flex-start;
+	}
+
 	.atlas-center-shell-layout {
 		grid-template-columns: 1fr;
 	}

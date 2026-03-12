@@ -9,7 +9,7 @@ import assert from 'assert';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
 import { AgentRole, AgentStatus, type IAgentState, type IFleetState } from '../../../../common/model/agent.js';
 import { AttentionLevel } from '../../../../common/model/attention.js';
-import { PoolMode, type IHealthState } from '../../../../common/model/health.js';
+import type { IHealthState } from '../../../../common/model/health.js';
 import { ObjectiveStatus, type IObjectiveState } from '../../../../common/model/objective.js';
 import { MergeExecutionStatus, type IMergeEntry, type IReviewGateState } from '../../../../common/model/review.js';
 import { EntityKind, NavigationSection, ReviewTargetKind, type INavigationSelection } from '../../../../common/model/selection.js';
@@ -27,6 +27,7 @@ import {
 	buildTaskNavigationItems,
 	buildTasksWorkspaceModel,
 } from '../../browser/atlasNavigationModel.js';
+import { buildAtlasHeaderModel } from '../../browser/atlasHeaderModel.js';
 import { ReviewWorkspaceActionId } from '../../browser/atlasReviewWorkspaceActions.js';
 
 suite('AtlasNavigationModel', () => {
@@ -74,6 +75,150 @@ suite('AtlasNavigationModel', () => {
 		assert.strictEqual(sections[1].attentionLevel, AttentionLevel.NeedsAction);
 		assert.strictEqual(sections[2].attentionLevel, AttentionLevel.NeedsAction);
 		assert.strictEqual(sections[3].attentionLevel, AttentionLevel.NeedsAction);
+	});
+
+	test('builds a phase 9 header with project and fabric identity plus quick pivots', () => {
+		const model = buildAtlasHeaderModel(
+			{ section: NavigationSection.Tasks, entity: undefined },
+			createAtlasStateSnapshot({
+				connection: createConnectionState({
+					fabricIdentity: {
+						fabric_id: 'fabric-test-9',
+						repo_root: '/workspace/atlas-project',
+						db_path: '/workspace/atlas-project/router.db',
+						harness_home: '/workspace/atlas-project',
+						artifact_dir: '/workspace/atlas-project/.codex/artifacts',
+						metrics_path: '/workspace/atlas-project/.codex/workspace-comms/metrics.jsonl',
+					},
+				}),
+				swarms: [
+					createSwarmState({ swarmId: 'TASK-ROOT-1', rootTaskId: 'TASK-ROOT-1' }),
+				],
+				fleet: createFleetState([
+					createAgentState({ dispatchId: 'disp-1', taskId: 'TASK-ROOT-1' }),
+				]),
+			}),
+			'atlas-project',
+		);
+
+		assert.strictEqual(model.brandLabel, 'Atlas');
+		assert.strictEqual(model.projectLabel, 'atlas-project');
+		assert.strictEqual(model.fabricLabel, 'Fabric fabric-test-9');
+		assert.deepStrictEqual(model.breadcrumbs.map(crumb => crumb.label), ['Tasks']);
+		assert.strictEqual(model.pivots.find(pivot => pivot.section === NavigationSection.Tasks)?.selected, true);
+		assert.strictEqual(model.pivots.find(pivot => pivot.section === NavigationSection.Agents)?.count, 1);
+	});
+
+	test('builds phase 9 header context from the selected entity', () => {
+		const model = buildAtlasHeaderModel(
+			{ section: NavigationSection.Agents, entity: { kind: EntityKind.Agent, id: 'disp-agent-1' } },
+			createAtlasStateSnapshot({
+				swarms: [
+					createSwarmState({
+						swarmId: 'TASK-ROOT-1',
+						rootTaskId: 'TASK-ROOT-1',
+						taskIds: Object.freeze(['TASK-ROOT-1']),
+					}),
+				],
+				fleet: createFleetState([
+					createAgentState({
+						dispatchId: 'disp-agent-1',
+						taskId: 'TASK-ROOT-1',
+						roleId: 'planner',
+						status: AgentStatus.Running,
+					}),
+				]),
+			}),
+			'atlas-project',
+		);
+
+		assert.strictEqual(model.contextTitle, 'planner · disp-agent-1');
+		assert.strictEqual(model.contextSubtitle, 'Task TASK-ROOT-1 · Swarm TASK-ROOT-1 · running');
+		assert.deepStrictEqual(model.breadcrumbs.map(crumb => crumb.label), ['Agents', 'Agent', 'planner · disp-agent-1']);
+	});
+
+	test('keeps gate and merge review breadcrumbs distinct in the phase 9 header', () => {
+		const state = createAtlasStateSnapshot({
+			reviewGates: [
+				createReviewGateState({
+					dispatchId: 'disp-review-1',
+					taskId: 'TASK-ROOT-1',
+					roleId: 'axiom-judge',
+					reviewState: WireReviewState.AwaitingReview,
+				}),
+			],
+			mergeQueue: [
+				createMergeEntry({
+					dispatchId: 'disp-review-1',
+					taskId: 'TASK-ROOT-1',
+					candidateBranch: 'feature/review-1',
+					status: MergeExecutionStatus.Pending,
+				}),
+			],
+		});
+
+		const gateModel = buildAtlasHeaderModel(
+			{ section: NavigationSection.Reviews, entity: { kind: EntityKind.Review, id: 'disp-review-1', reviewTargetKind: ReviewTargetKind.Gate } },
+			state,
+			'atlas-project',
+		);
+		const mergeModel = buildAtlasHeaderModel(
+			{ section: NavigationSection.Reviews, entity: { kind: EntityKind.Review, id: 'disp-review-1', reviewTargetKind: ReviewTargetKind.Merge } },
+			state,
+			'atlas-project',
+		);
+
+		assert.deepStrictEqual(gateModel.breadcrumbs.map(crumb => crumb.label), ['Reviews', 'Gate', 'axiom-judge gate']);
+		assert.deepStrictEqual(mergeModel.breadcrumbs.map(crumb => crumb.label), ['Reviews', 'Merge', 'review-1 merge']);
+	});
+
+	test('builds truthful phase 9 status chips for live and disconnected state', () => {
+		const connectedModel = buildAtlasHeaderModel(
+			{ section: NavigationSection.Fleet, entity: undefined },
+			createAtlasStateSnapshot({
+				connection: createConnectionState(),
+				swarms: [
+					createSwarmState({ swarmId: 'TASK-ROOT-1', rootTaskId: 'TASK-ROOT-1', attentionLevel: AttentionLevel.Critical }),
+					createSwarmState({ swarmId: 'TASK-ROOT-2', rootTaskId: 'TASK-ROOT-2', attentionLevel: AttentionLevel.NeedsAction }),
+				],
+				fleet: createFleetState([
+					createAgentState({ dispatchId: 'disp-running', taskId: 'TASK-ROOT-1', status: AgentStatus.Running }),
+					createAgentState({ dispatchId: 'disp-blocked', taskId: 'TASK-ROOT-2', status: AgentStatus.Blocked }),
+					createAgentState({ dispatchId: 'disp-failed', taskId: 'TASK-ROOT-2', status: AgentStatus.Failed }),
+				]),
+				health: createHealthState({ mode: 'degraded' as IHealthState['mode'], queueDepth: 7, attentionLevel: AttentionLevel.NeedsAction }),
+			}),
+			'atlas-project',
+		);
+		const connectedChips = Object.fromEntries(connectedModel.statusChips.map(chip => [chip.id, chip.value]));
+		assert.deepStrictEqual(connectedChips, {
+			connection: 'Daemon connected',
+			health: 'degraded',
+			queue: '7',
+			active: '1',
+			blocked: '1',
+			failed: '1',
+			'critical-swarms': '1',
+			'needs-action-swarms': '1',
+		});
+
+		const disconnectedModel = buildAtlasHeaderModel(
+			{ section: NavigationSection.Tasks, entity: undefined },
+			createAtlasStateSnapshot({
+				connection: createConnectionState({
+					state: HarnessConnectionState.Disconnected,
+					mode: 'none',
+					daemonVersion: undefined,
+					schemaVersion: undefined,
+					grantedCapabilities: Object.freeze([]),
+					errorMessage: undefined,
+				}),
+			}),
+			'atlas-project',
+		);
+
+		assert.strictEqual(disconnectedModel.fabricLabel, 'No harness fabric attached');
+		assert.strictEqual(disconnectedModel.statusChips.find(chip => chip.id === 'connection')?.value, 'Disconnected');
 	});
 
 	test('keeps tasks swarm-rooted and treats objective metadata as secondary decoration', () => {
@@ -456,7 +601,7 @@ suite('AtlasNavigationModel', () => {
 				}),
 			]),
 			health: createHealthState({
-				mode: PoolMode.DiskPressure,
+				mode: 'disk_pressure' as IHealthState['mode'],
 				queueDepth: 3,
 				attentionLevel: AttentionLevel.NeedsAction,
 			}),
@@ -854,6 +999,7 @@ function createConnectionState(overrides: Partial<IHarnessConnectionInfo> = {}):
 		mode: 'daemon',
 		writesEnabled: false,
 		supportedWriteMethods: Object.freeze([]),
+		fabricIdentity: undefined,
 		daemonVersion: '0.1.0-test',
 		schemaVersion: '2026-03-01',
 		grantedCapabilities: Object.freeze(['read']),
@@ -985,7 +1131,7 @@ function createFleetState(agents: readonly IAgentState[], overrides: Partial<IFl
 
 function createHealthState(overrides: Partial<IHealthState> = {}): IHealthState {
 	return {
-		mode: PoolMode.Normal,
+		mode: 'normal' as IHealthState['mode'],
 		diskUsagePct: 10,
 		memoryUsagePct: 20,
 		walSizeBytes: 512,

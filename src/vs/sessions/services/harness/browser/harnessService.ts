@@ -57,6 +57,7 @@ const DISCONNECTED_STATE = constObservable<IHarnessConnectionInfo>({
 	mode: 'none',
 	writesEnabled: false,
 	supportedWriteMethods: Object.freeze([]),
+	fabricIdentity: undefined,
 	daemonVersion: undefined,
 	schemaVersion: undefined,
 	grantedCapabilities: Object.freeze([]),

@@ -90,7 +90,7 @@ The current sessions layer is organized around **one active session** at a time.
 | Session list in sidebar | Unified Atlas left rail with `Tasks` / `Agents` / `Reviews` / `Fleet`, backed by swarms |
 | Chat as primary interaction | Swarm board as the primary execution surface |
 | File changes for one session | File changes scoped to any swarm or agent |
-| Session picker in titlebar | Project/objective/swarm selector + fleet status |
+| Session picker in titlebar | Atlas sessions header with project/fabric identity, section breadcrumbs, quick pivots, and live status |
 
 ### First-Class Unit
 
@@ -114,7 +114,7 @@ A swarm is not a brand-new backend object that replaces the harness. It is the U
 **Current chat bar** (single agent chat) → **Atlas center stage** (objective board, swarm board, agent view, fleet grid, diff view, etc.)
 **Current auxiliary bar** (changes view) → **Atlas right inspector** (context for selected entity)
 **Current panel** (hidden) → **Atlas bottom ops strip** (terminals, logs, health)
-**Current titlebar** (session picker) → **Atlas titlebar** (project/objective/swarm selector, fleet status, global controls)
+**Current titlebar** (session picker) → **Atlas sessions header** (project/fabric identity, current section context, quick pivots, live status)
 
 ---
 
@@ -203,7 +203,7 @@ This shipped Phase 4 wave is intentionally narrower than the broader long-term v
 
 **Keep existing**: `sessions/` (rename to session management internals), `changes/` (extend for agent-scoped diffs), `git/`, `github/`, `codeReview/`, `terminal/`, `files/`, `fileTreeView/`
 
-**Update titlebar**: Replace session picker with project/objective/swarm selector + fleet status badge + global controls (pause all, cost indicator).
+**Update titlebar/header**: Replace the generic sessions picker/chrome with an Atlas-specific sessions header that surfaces project/fabric identity, current section/selection breadcrumbs, quick pivots, and live read-only status.
 
 ### Phase 5: Fleet Command
 

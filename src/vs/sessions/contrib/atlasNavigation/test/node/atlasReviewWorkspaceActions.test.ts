@@ -271,6 +271,7 @@ function createConnectionState(overrides: Partial<IHarnessConnectionInfo> = {}):
 		mode: 'daemon',
 		writesEnabled: false,
 		supportedWriteMethods: Object.freeze([]),
+		fabricIdentity: undefined,
 		daemonVersion: '0.1.0-test',
 		schemaVersion: '2026-03-01',
 		grantedCapabilities: Object.freeze(['read']),

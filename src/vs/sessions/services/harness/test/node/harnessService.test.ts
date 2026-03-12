@@ -220,6 +220,7 @@ suite('HarnessService', () => {
 			assert.strictEqual(connectionState.mode, 'daemon');
 			assert.strictEqual(connectionState.writesEnabled, false);
 			assert.deepStrictEqual(connectionState.supportedWriteMethods, []);
+			assert.deepStrictEqual(connectionState.fabricIdentity, fixture.fabricIdentity);
 			assert.deepStrictEqual(connectionState.grantedCapabilities, ['read']);
 
 			const methods = server.requests.map(request => request.method);
@@ -614,6 +615,7 @@ suite('HarnessService', () => {
 			assert.strictEqual(state.mode, 'daemon');
 			assert.strictEqual(state.writesEnabled, true);
 			assert.deepStrictEqual(state.supportedWriteMethods, ['control.pause', 'control.cancel', 'dispatch.submit']);
+			assert.deepStrictEqual(state.fabricIdentity, fixture.fabricIdentity);
 			assert.deepStrictEqual(state.grantedCapabilities, ['read', 'control', 'dispatch']);
 		} finally {
 			await service.disconnect();
@@ -1024,6 +1026,7 @@ function connectionState(mode: 'daemon' | 'polling') {
 		mode,
 		writesEnabled: false,
 		supportedWriteMethods: Object.freeze([]),
+		fabricIdentity: undefined,
 		daemonVersion: mode === 'daemon' ? '0.1.0-test' : undefined,
 		schemaVersion: mode === 'daemon' ? '2026-03-01' : undefined,
 		grantedCapabilities: mode === 'daemon' ? Object.freeze(['read']) : Object.freeze([]),

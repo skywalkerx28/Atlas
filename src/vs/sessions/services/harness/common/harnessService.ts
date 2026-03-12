@@ -11,6 +11,7 @@ import type {
 	HarnessSupportedWriteMethod,
 	IHarnessArtifactInventory,
 	IHarnessArtifactPreview,
+	IHarnessFabricIdentity,
 	IReviewProvenanceEntry,
 	IHarnessTaskTree,
 	IHarnessTranscriptSnapshot,
@@ -33,6 +34,7 @@ export interface IHarnessConnectionInfo {
 	readonly mode: HarnessConnectionMode;
 	readonly writesEnabled: boolean;
 	readonly supportedWriteMethods: readonly HarnessSupportedWriteMethod[];
+	readonly fabricIdentity: IHarnessFabricIdentity | undefined;
 	readonly daemonVersion: string | undefined;
 	readonly schemaVersion: string | undefined;
 	readonly grantedCapabilities: readonly string[];

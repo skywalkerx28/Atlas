@@ -590,55 +590,57 @@ export function createArtifactGetResult(overrides: Partial<IArtifactGetResult> =
 }
 
 export function createAgentActivityResult(overrides: Partial<IAgentActivityGetResult> = {}): IAgentActivityGetResult {
+	const event: AtlasModel.IWireAgentActivityEvent = {
+		ts: '2026-03-11T12:05:00.000Z',
+		dispatch_id: 'disp-1',
+		task_id: 'TASK-ROOT-1',
+		objective_id: 'OBJ-1',
+		role_id: 'planner',
+		handoff_type: 'planning' as AtlasModel.IWireAgentActivityEvent['handoff_type'],
+		kind: 'reasoning' as AtlasModel.IWireAgentActivityEvent['kind'],
+		summary: 'Re-planned the task graph',
+		payload: { note: 'test' },
+	};
+
 	return {
 		dispatch_id: 'disp-1',
 		available: true,
 		run_manifest_path: '/tmp/dispatch-runs/disp-1/run-manifest.json',
 		activity_stream_path: '/tmp/dispatch-runs/disp-1/activity.jsonl',
-		events: Object.freeze([
-			{
-				ts: '2026-03-11T12:05:00.000Z',
-				dispatch_id: 'disp-1',
-				task_id: 'TASK-ROOT-1',
-				objective_id: 'OBJ-1',
-				role_id: 'planner',
-				handoff_type: 'planning',
-				kind: 'reasoning',
-				summary: 'Re-planned the task graph',
-				payload: { note: 'test' },
-			},
-		]),
+		events: Object.freeze([event]),
 		...overrides,
 	};
 }
 
 export function createMemoryListResult(overrides: Partial<IMemoryListResult> = {}): IMemoryListResult {
+	const body: AtlasModel.IWireMemoryRecord['body'] = {
+		memory_type: 'decision' as AtlasModel.IWireMemoryRecord['body']['memory_type'],
+		body: {
+			decision_text: 'Keep the bridge read-only.',
+			scope_paths: Object.freeze(['src/vs/sessions']),
+		},
+	};
+
+	const record: AtlasModel.IWireMemoryRecord = {
+		header: {
+			record_id: 'mem-1',
+			memory_type: 'decision' as AtlasModel.IWireMemoryRecord['header']['memory_type'],
+			scope: 'planner_tree' as AtlasModel.IWireMemoryRecord['header']['scope'],
+			authority: 'evidence_accepted' as AtlasModel.IWireMemoryRecord['header']['authority'],
+			lifecycle: 'accepted' as AtlasModel.IWireMemoryRecord['header']['lifecycle'],
+			task_id: 'TASK-ROOT-1',
+			dispatch_id: 'disp-1',
+			source_artifact_path: 'artifacts/result_packet.json',
+			source_digest: 'sha256:test',
+			created_by_role: 'planner',
+			created_by_actor: 'planner:test',
+			created_at: '2026-03-11T12:06:00.000Z',
+		},
+		body,
+	};
+
 	return {
-		records: Object.freeze([
-			{
-				header: {
-					record_id: 'mem-1',
-					memory_type: 'decision',
-					scope: 'planner_tree',
-					authority: 'evidence_accepted',
-					lifecycle: 'accepted',
-					task_id: 'TASK-ROOT-1',
-					dispatch_id: 'disp-1',
-					source_artifact_path: 'artifacts/result_packet.json',
-					source_digest: 'sha256:test',
-					created_by_role: 'planner',
-					created_by_actor: 'planner:test',
-					created_at: '2026-03-11T12:06:00.000Z',
-				},
-				body: {
-					memory_type: 'decision',
-					body: {
-						decision_text: 'Keep the bridge read-only.',
-						scope_paths: Object.freeze(['src/vs/sessions']),
-					},
-				},
-			},
-		]),
+		records: Object.freeze([record]),
 		...overrides,
 	};
 }
@@ -652,7 +654,7 @@ export function createResultGetResult(overrides: Partial<IResultGetResult> = {})
 			created_at: '2026-03-11T12:07:00.000Z',
 			from_role: 'planner',
 			to_role: 'planner',
-			status: 'done',
+			status: 'done' as AtlasModel.IWireResultPacket['status'],
 			summary: 'Completed the assigned work',
 			artifacts: Object.freeze(['result_packet.json']),
 			commands: Object.freeze(['npm test']),

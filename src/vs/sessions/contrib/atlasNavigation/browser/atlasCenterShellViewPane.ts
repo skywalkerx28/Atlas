@@ -22,6 +22,7 @@ import { IConfigurationService } from '../../../../platform/configuration/common
 import { IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
 import { IOpenerService } from '../../../../platform/opener/common/opener.js';
 import { IHoverService } from '../../../../platform/hover/browser/hover.js';
+import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
 import { IFleetManagementService } from '../../../services/fleet/common/fleetManagementService.js';
 import { IHarnessService } from '../../../services/harness/common/harnessService.js';
 import {
@@ -42,6 +43,7 @@ import {
 	type ITaskWorkspaceSwarmCard,
 	type ITaskWorkspaceTaskEntry,
 } from './atlasNavigationModel.js';
+import { buildAtlasHeaderModel, type IAtlasHeaderModel } from './atlasHeaderModel.js';
 import {
 	buildAtlasInspectorModel,
 	createLoadingAtlasInspectorModel,
@@ -71,6 +73,7 @@ export class AtlasCenterShellViewPane extends ViewPane {
 		@IOpenerService openerService: IOpenerService,
 		@IThemeService themeService: IThemeService,
 		@IHoverService hoverService: IHoverService,
+		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
 		@IFleetManagementService private readonly fleetManagementService: IFleetManagementService,
 		@IHarnessService private readonly harnessService: IHarnessService,
 	) {
@@ -106,28 +109,29 @@ export class AtlasCenterShellViewPane extends ViewPane {
 			const reviewUiState = this.reviewWorkspaceActions.uiState.read(reader);
 			const state = this.readInspectorStateSnapshot(reader);
 			const inspectorModel = this.inspectorModel.read(reader);
+			const headerModel = buildAtlasHeaderModel(selection, state, this.workspaceContextService.getWorkspace().folders[0]?.name);
 
 			if (selection.section === NavigationSection.Fleet) {
-				this.renderFleetCommand(buildFleetCommandModel(state), inspectorModel);
+				this.renderFleetCommand(buildFleetCommandModel(state), headerModel, inspectorModel);
 				return;
 			}
 
 			if (selection.section === NavigationSection.Reviews) {
-				this.renderReviewWorkspace(buildReviewWorkspaceModel(selection, state, reviewUiState), inspectorModel);
+				this.renderReviewWorkspace(buildReviewWorkspaceModel(selection, state, reviewUiState), headerModel, inspectorModel);
 				return;
 			}
 
 			if (selection.section === NavigationSection.Tasks) {
-				this.renderTasksWorkspace(buildTasksWorkspaceModel(selection, state), inspectorModel);
+				this.renderTasksWorkspace(buildTasksWorkspaceModel(selection, state), headerModel, inspectorModel);
 				return;
 			}
 
 			if (selection.section === NavigationSection.Agents) {
-				this.renderAgentsWorkspace(buildAgentsWorkspaceModel(selection, state), inspectorModel);
+				this.renderAgentsWorkspace(buildAgentsWorkspaceModel(selection, state), headerModel, inspectorModel);
 				return;
 			}
 
-			this.renderShell(buildAtlasShellModel(selection, state), inspectorModel);
+			this.renderShell(buildAtlasShellModel(selection, state), headerModel, inspectorModel);
 		}));
 	}
 
@@ -156,29 +160,33 @@ export class AtlasCenterShellViewPane extends ViewPane {
 		this.inspectorModel.set(nextModel, undefined, undefined);
 	}
 
-	private prepareBodyLayout(inspectorModel: IAtlasInspectorModel | undefined): HTMLElement | undefined {
+	private prepareBodyLayout(headerModel: IAtlasHeaderModel, inspectorModel: IAtlasInspectorModel | undefined): HTMLElement | undefined {
 		if (!this.bodyContainer) {
 			return undefined;
 		}
 
 		DOM.clearNode(this.bodyContainer);
-		if (!inspectorModel) {
-			return this.bodyContainer;
-		}
+		const frame = DOM.append(this.bodyContainer, $('div.atlas-center-shell-frame'));
+		this.renderAtlasHeader(frame, headerModel);
 
-		const layout = DOM.append(this.bodyContainer, $('div.atlas-center-shell-layout'));
+		const layout = DOM.append(frame, $('div.atlas-center-shell-layout'));
+		if (!inspectorModel) {
+			layout.classList.add('atlas-center-shell-layout-single');
+		}
 		const mainContainer = DOM.append(layout, $('div.atlas-center-shell-main-region'));
-		const inspectorContainer = DOM.append(layout, $('aside.atlas-center-shell-inspector-region'));
-		this.renderInspector(inspectorContainer, inspectorModel);
+		if (inspectorModel) {
+			const inspectorContainer = DOM.append(layout, $('aside.atlas-center-shell-inspector-region'));
+			this.renderInspector(inspectorContainer, inspectorModel);
+		}
 		return mainContainer;
 	}
 
-	private renderShell(model: ReturnType<typeof buildAtlasShellModel>, inspectorModel: IAtlasInspectorModel | undefined): void {
+	private renderShell(model: ReturnType<typeof buildAtlasShellModel>, headerModel: IAtlasHeaderModel, inspectorModel: IAtlasInspectorModel | undefined): void {
 		if (!this.bodyContainer) {
 			return;
 		}
 
-		const mainContainer = this.prepareBodyLayout(inspectorModel);
+		const mainContainer = this.prepareBodyLayout(headerModel, inspectorModel);
 		if (!mainContainer) {
 			return;
 		}
@@ -222,12 +230,12 @@ export class AtlasCenterShellViewPane extends ViewPane {
 		}
 	}
 
-	private renderTasksWorkspace(model: ITaskWorkspaceModel, inspectorModel: IAtlasInspectorModel | undefined): void {
+	private renderTasksWorkspace(model: ITaskWorkspaceModel, headerModel: IAtlasHeaderModel, inspectorModel: IAtlasInspectorModel | undefined): void {
 		if (!this.bodyContainer) {
 			return;
 		}
 
-		const mainContainer = this.prepareBodyLayout(inspectorModel);
+		const mainContainer = this.prepareBodyLayout(headerModel, inspectorModel);
 		if (!mainContainer) {
 			return;
 		}
@@ -296,12 +304,12 @@ export class AtlasCenterShellViewPane extends ViewPane {
 		}
 	}
 
-	private renderAgentsWorkspace(model: ReturnType<typeof buildAgentsWorkspaceModel>, inspectorModel: IAtlasInspectorModel | undefined): void {
+	private renderAgentsWorkspace(model: ReturnType<typeof buildAgentsWorkspaceModel>, headerModel: IAtlasHeaderModel, inspectorModel: IAtlasInspectorModel | undefined): void {
 		if (!this.bodyContainer) {
 			return;
 		}
 
-		const mainContainer = this.prepareBodyLayout(inspectorModel);
+		const mainContainer = this.prepareBodyLayout(headerModel, inspectorModel);
 		if (!mainContainer) {
 			return;
 		}
@@ -351,6 +359,59 @@ export class AtlasCenterShellViewPane extends ViewPane {
 			label.textContent = item.label;
 			const value = DOM.append(card, $('div.atlas-center-shell-stat-value'));
 			value.textContent = item.value;
+		}
+	}
+
+	private renderAtlasHeader(container: HTMLElement, model: IAtlasHeaderModel): void {
+		const header = DOM.append(container, $('header.atlas-shell-header'));
+		const topRow = DOM.append(header, $('div.atlas-shell-header-top'));
+
+		const identity = DOM.append(topRow, $('div.atlas-shell-header-identity'));
+		const brand = DOM.append(identity, $('div.atlas-shell-header-brand'));
+		brand.textContent = model.brandLabel;
+		const project = DOM.append(identity, $('div.atlas-shell-header-project'));
+		project.textContent = model.projectLabel;
+		const fabric = DOM.append(identity, $('div.atlas-shell-header-fabric'));
+		fabric.textContent = model.fabricLabel;
+
+		const context = DOM.append(topRow, $('div.atlas-shell-header-context'));
+		const breadcrumbs = DOM.append(context, $('div.atlas-shell-header-breadcrumbs'));
+		for (const [index, crumb] of model.breadcrumbs.entries()) {
+			if (index > 0) {
+				const separator = DOM.append(breadcrumbs, $('span.atlas-shell-header-breadcrumb-separator'));
+				separator.textContent = '/';
+			}
+			const item = DOM.append(breadcrumbs, $('span.atlas-shell-header-breadcrumb'));
+			item.textContent = crumb.label;
+		}
+		const contextTitle = DOM.append(context, $('div.atlas-shell-header-context-title'));
+		contextTitle.textContent = model.contextTitle;
+		const contextSubtitle = DOM.append(context, $('div.atlas-shell-header-context-subtitle'));
+		contextSubtitle.textContent = model.contextSubtitle;
+
+		const status = DOM.append(topRow, $('div.atlas-shell-header-status'));
+		for (const chipModel of model.statusChips) {
+			const chip = DOM.append(status, $('div.atlas-shell-header-status-chip'));
+			chip.classList.add(attentionClass(chipModel.attentionLevel));
+			const label = DOM.append(chip, $('div.atlas-shell-header-status-label'));
+			label.textContent = chipModel.label;
+			const value = DOM.append(chip, $('div.atlas-shell-header-status-value'));
+			value.textContent = chipModel.value;
+		}
+
+		const pivots = DOM.append(header, $('nav.atlas-shell-header-pivots'));
+		for (const pivot of model.pivots) {
+			const button = DOM.append(pivots, $('button.atlas-shell-header-pivot')) as HTMLButtonElement;
+			button.type = 'button';
+			button.classList.add(attentionClass(pivot.attentionLevel));
+			if (pivot.selected) {
+				button.classList.add('atlas-shell-header-pivot-selected');
+			}
+			button.addEventListener('click', () => this.fleetManagementService.selectSection(pivot.section));
+			const label = DOM.append(button, $('span.atlas-shell-header-pivot-label'));
+			label.textContent = pivot.label;
+			const count = DOM.append(button, $('span.atlas-shell-header-pivot-count'));
+			count.textContent = String(pivot.count);
 		}
 	}
 
@@ -544,12 +605,12 @@ export class AtlasCenterShellViewPane extends ViewPane {
 		message.textContent = messageText;
 	}
 
-	private renderFleetCommand(model: ReturnType<typeof buildFleetCommandModel>, inspectorModel: IAtlasInspectorModel | undefined): void {
+	private renderFleetCommand(model: ReturnType<typeof buildFleetCommandModel>, headerModel: IAtlasHeaderModel, inspectorModel: IAtlasInspectorModel | undefined): void {
 		if (!this.bodyContainer) {
 			return;
 		}
 
-		const mainContainer = this.prepareBodyLayout(inspectorModel);
+		const mainContainer = this.prepareBodyLayout(headerModel, inspectorModel);
 		if (!mainContainer) {
 			return;
 		}
@@ -650,12 +711,12 @@ export class AtlasCenterShellViewPane extends ViewPane {
 		metaValue.textContent = value;
 	}
 
-	private renderReviewWorkspace(model: IReviewWorkspaceModel, inspectorModel: IAtlasInspectorModel | undefined): void {
+	private renderReviewWorkspace(model: IReviewWorkspaceModel, headerModel: IAtlasHeaderModel, inspectorModel: IAtlasInspectorModel | undefined): void {
 		if (!this.bodyContainer) {
 			return;
 		}
 
-		const mainContainer = this.prepareBodyLayout(inspectorModel);
+		const mainContainer = this.prepareBodyLayout(headerModel, inspectorModel);
 		if (!mainContainer) {
 			return;
 		}

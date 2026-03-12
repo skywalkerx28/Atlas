@@ -1928,78 +1928,85 @@ Hard edges:
 
 ### Objective
 
-Replace the session picker in the titlebar with factory-wide controls: objective selector, fleet status badges, cost indicator, global controls.
+Replace the generic sessions header/chrome with an Atlas-specific sessions-shell header that surfaces:
+
+- current project / workspace identity
+- current harness fabric identity when available
+- current section / selection breadcrumbs
+- live connection / health / queue / attention status
+- read-only quick pivots among `Tasks`, `Agents`, `Reviews`, and `Fleet`
+
+This wave is sessions-only and read-only. It does not override the standard workbench titlebar, and it does not add write controls.
 
 ### Prerequisites
 
-Phase 3 (fleet state), Phase 5 (fleet command service for aggregates).
+Phase 3 (fleet state), Phase 5 (fleet command service for aggregates), Phase 8 (inspector shell already present in the same center-shell wrapper).
 
 ### Deliverables
 
 ```
-src/vs/sessions/browser/parts/titlebarPart.ts    (modify existing)
-src/vs/sessions/browser/widget/
-├── fleetStatusWidget.ts              Fleet badges in titlebar (active/idle/blocked counts)
-├── objectiveSelectorWidget.ts        Dropdown: select active objective
-├── costIndicatorWidget.ts            Live cost display ($X.XX / $cap)
-└── globalControlsWidget.ts           Pause All, health dot
+src/vs/sessions/contrib/atlasNavigation/browser/
+├── atlasCenterShellViewPane.ts       Header rendering inside the sessions shell wrapper
+├── atlasHeaderModel.ts               Pure header view-model builder
+└── media/atlasCenterShellViewPane.css
 ```
 
 ### Implementation Steps
 
-#### 9.1 — Fleet status widget
+#### 9.1 — Identity block
 
-Replaces the session picker area. Shows badge counts:
+Render a left-aligned Atlas identity block in the sessions shell header:
 
-```
-[4● 1○ 2⚠]
-```
+- product label (`Atlas`)
+- current workspace / project name
+- current `fabric_identity.fabric_id` when available from the daemon
+- truthful sparse state when disconnected or polling without daemon identity
 
-- `4●` = 4 active agents (green)
-- `1○` = 1 idle agent (gray)
-- `2⚠` = 2 agents needing attention (orange)
+#### 9.2 — Context breadcrumbs
 
-Click opens the Agents view in the sidebar. Tooltip shows per-status breakdown.
+Render a center-aligned context block that reflects the current selection model:
 
-#### 9.2 — Objective selector
+- current section (`Tasks`, `Agents`, `Reviews`, `Fleet`)
+- selected entity breadcrumbs when present
+- distinct review target kind (`Gate` vs `Merge`) preserved in the breadcrumb path
 
-Dropdown that shows all active objectives. Selecting one filters the left rail views to show only swarms/tasks/agents for that objective. "All" shows everything.
+#### 9.3 — Live status chips
 
-```
-OBJ-042: Payment Processing ▾
-```
+Render right-aligned read-only status chips sourced from the current sessions state:
 
-#### 9.3 — Cost indicator
+- connection mode/state
+- pool health mode
+- queue depth
+- active / blocked / failed agent counts
+- critical / needs-action swarm counts
 
-Live cost readout with budget context:
+#### 9.4 — Quick pivots
 
-```
-[$47.20/$500]
-```
+Add read-only top-level pivot buttons wired through the existing `IFleetManagementService.selectSection(...)` flow:
 
-Color-coded: green (<50% budget), yellow (50-80%), orange (80-95%), red (>95%).
+- `Tasks`
+- `Agents`
+- `Reviews`
+- `Fleet`
 
-#### 9.4 — Global controls
-
-- **Pause All**: Emergency stop. Sends `pauseAll()` through `IHarnessService`.
-- **Health dot**: Green/yellow/red based on `IHealthState.mode` (Normal/DiskPressure/CostCeiling).
+Each pivot shows the current section count and selection state, but no write actions.
 
 ### Layout
 
-Modify the existing `SessionsTitleBarWidget` (or `TitleService`) to replace the three-section layout:
+Render the header inside the existing sessions center-shell wrapper:
 
 ```
-[toggle rail] [fleet status] │ [objective selector] │ [cost] [pause all] [health] [avatar]
-     left                         center                         right
+[Atlas / project / fabric] │ [section / selection breadcrumb] │ [status chips]
+[Tasks] [Agents] [Reviews] [Fleet]
 ```
 
 ### Validation
 
-- Fleet badges update in real-time as agents change state
-- Objective selector filters all views correctly
-- Cost indicator color changes at budget thresholds
-- Pause All actually pauses all agents (via harness)
-- Health dot reflects harness mode
+- Project/fabric identity is truthful when the daemon is attached and sparse when it is not
+- Current section and selected entity context update deterministically
+- Review gate and merge targets for the same `dispatchId` stay distinct in the header context
+- Status chips reflect live connection / health / queue / swarm counts
+- Quick pivots route through the existing sessions navigation state
 
 ---
 
