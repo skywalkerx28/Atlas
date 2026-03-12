@@ -25,8 +25,12 @@ import type {
 	IFleetDeltaNotification,
 	HarnessCapability,
 	HarnessSupportedWriteMethod,
+	IHarnessArtifactInventory,
+	IHarnessArtifactPreview,
 	IHarnessFabricIdentity,
+	IReviewProvenanceEntry,
 	IHarnessTaskTree,
+	IHarnessTranscriptSnapshot,
 	IHealthUpdateNotification,
 	IMergeQueueRecord,
 	IMergeUpdateNotification,
@@ -60,6 +64,8 @@ import {
 	toPresentationReviewGates,
 	toPresentationTaskFromDetail,
 	toPresentationTasks,
+	toPresentationTranscriptEntries,
+	toPresentationWorktreeState,
 } from './harnessMapper.js';
 import { deriveSwarms } from './harnessSwarmDerivation.js';
 import { HarnessSqlitePoller } from './harnessSqlitePoller.js';
@@ -137,6 +143,7 @@ export class HarnessService extends Disposable implements IHarnessService {
 	private mergeRecords: readonly IMergeQueueRecord[] = Object.freeze([]);
 	private rootedTaskIds: readonly string[] = Object.freeze([]);
 	private taskTrees = new Map<string, ITaskTreeResult>();
+	private readonly agentActivityObservables = new Map<string, ReturnType<typeof observableValue<readonly AtlasModel.ITranscriptEntry[]>>>();
 	private subscriptionIds: Record<HarnessSubscriptionTopic, string | undefined> = {
 		fleet: undefined,
 		health: undefined,
@@ -329,20 +336,179 @@ export class HarnessService extends Disposable implements IHarnessService {
 		return undefined;
 	}
 
-	async getResultPacket(_dispatchId: string): Promise<AtlasModel.IWireResultPacket | undefined> {
-		return undefined;
+	async getResultPacket(dispatchId: string): Promise<AtlasModel.IWireResultPacket | undefined> {
+		const client = this.daemonClient;
+		if (!client || this.connectionState.get().mode !== 'daemon') {
+			return undefined;
+		}
+		this.requireSupportedReadMethod(client, 'result.get');
+
+		try {
+			const result = await client.request('result.get', { dispatch_id: dispatchId });
+			return result.result_packet;
+		} catch (error) {
+			if (isNotFoundLikeDaemonError(error)) {
+				return undefined;
+			}
+			throw error;
+		}
 	}
 
-	async getTranscript(_dispatchId: string): Promise<readonly AtlasModel.ITranscriptEntry[]> {
-		return Object.freeze([]);
+	async getTranscript(dispatchId: string): Promise<IHarnessTranscriptSnapshot | undefined> {
+		const client = this.daemonClient;
+		if (!client || this.connectionState.get().mode !== 'daemon') {
+			return undefined;
+		}
+		this.requireSupportedReadMethod(client, 'transcript.get');
+
+		const result = await client.request('transcript.get', { dispatch_id: dispatchId, max_turns: 64 });
+		return {
+			dispatchId: result.dispatch_id,
+			available: result.available,
+			metadata: result.metadata,
+			excerptJsonl: normalizeOptionalString(result.excerpt_jsonl),
+		};
 	}
 
-	async getMemoryRecords(_swarmId: string): Promise<readonly AtlasModel.IWireMemoryRecord[]> {
-		return Object.freeze([]);
+	async getMemoryRecords(swarmId: string): Promise<readonly AtlasModel.IWireMemoryRecord[]> {
+		const client = this.daemonClient;
+		if (!client || this.connectionState.get().mode !== 'daemon') {
+			return Object.freeze([]);
+		}
+		this.requireSupportedReadMethod(client, 'memory.list');
+
+		const result = await client.request('memory.list', { root_task_id: swarmId, limit: 64 });
+		return Object.freeze(result.records.slice());
 	}
 
-	async getWorktreeState(_dispatchId: string): Promise<AtlasModel.IWorktreeState | undefined> {
-		return undefined;
+	async getTaskMemoryRecords(taskId: string): Promise<readonly AtlasModel.IWireMemoryRecord[]> {
+		const client = this.daemonClient;
+		if (!client || this.connectionState.get().mode !== 'daemon') {
+			return Object.freeze([]);
+		}
+		this.requireSupportedReadMethod(client, 'memory.list');
+
+		const result = await client.request('memory.list', { task_id: taskId, limit: 64 });
+		return Object.freeze(result.records.slice());
+	}
+
+	async getMemoryRecord(recordId: string): Promise<AtlasModel.IWireMemoryRecord | undefined> {
+		const client = this.daemonClient;
+		if (!client || this.connectionState.get().mode !== 'daemon') {
+			return undefined;
+		}
+		this.requireSupportedReadMethod(client, 'memory.get');
+
+		try {
+			return await client.request('memory.get', { record_id: recordId });
+		} catch (error) {
+			if (isNotFoundLikeDaemonError(error)) {
+				return undefined;
+			}
+			throw error;
+		}
+	}
+
+	async getWorktreeState(dispatchId: string): Promise<AtlasModel.IWorktreeState | undefined> {
+		const client = this.daemonClient;
+		if (!client || this.connectionState.get().mode !== 'daemon') {
+			return undefined;
+		}
+		this.requireSupportedReadMethod(client, 'worktree.get');
+
+		try {
+			const result = await client.request('worktree.get', { dispatch_id: dispatchId });
+			return toPresentationWorktreeState(result);
+		} catch (error) {
+			if (isNotFoundLikeDaemonError(error)) {
+				return undefined;
+			}
+			throw error;
+		}
+	}
+
+	async getWorktreeStates(rootTaskId: string): Promise<readonly AtlasModel.IWorktreeState[]> {
+		const client = this.daemonClient;
+		if (!client || this.connectionState.get().mode !== 'daemon') {
+			return Object.freeze([]);
+		}
+		this.requireSupportedReadMethod(client, 'worktree.list');
+
+		const result = await client.request('worktree.list', { root_task_id: rootTaskId, limit: 64 });
+		return Object.freeze(result.worktrees.map(worktree => toPresentationWorktreeState(worktree)));
+	}
+
+	async getArtifacts(dispatchId: string): Promise<IHarnessArtifactInventory | undefined> {
+		const client = this.daemonClient;
+		if (!client || this.connectionState.get().mode !== 'daemon') {
+			return undefined;
+		}
+		this.requireSupportedReadMethod(client, 'artifact.list');
+
+		try {
+			const result = await client.request('artifact.list', { dispatch_id: dispatchId, limit: 64 });
+			return toArtifactInventory(result);
+		} catch (error) {
+			if (isNotFoundLikeDaemonError(error)) {
+				return undefined;
+			}
+			throw error;
+		}
+	}
+
+	async getArtifactPreview(dispatchId: string, artifactPath: string): Promise<IHarnessArtifactPreview | undefined> {
+		const client = this.daemonClient;
+		if (!client || this.connectionState.get().mode !== 'daemon') {
+			return undefined;
+		}
+		this.requireSupportedReadMethod(client, 'artifact.get');
+
+		try {
+			const result = await client.request('artifact.get', {
+				dispatch_id: dispatchId,
+				artifact_path: artifactPath,
+				max_bytes: 64 * 1024,
+			});
+			return toArtifactPreview(result);
+		} catch (error) {
+			if (isNotFoundLikeDaemonError(error)) {
+				return undefined;
+			}
+			throw error;
+		}
+	}
+
+	async getAgentActivity(dispatchId: string): Promise<readonly AtlasModel.ITranscriptEntry[]> {
+		const client = this.daemonClient;
+		if (!client || this.connectionState.get().mode !== 'daemon') {
+			return Object.freeze([]);
+		}
+		this.requireSupportedReadMethod(client, 'agent.activity.get');
+
+		const result = await client.request('agent.activity.get', { dispatch_id: dispatchId, max_events: 64 });
+		return toPresentationTranscriptEntries(result.events);
+	}
+
+	async getReviewProvenance(dispatchId: string): Promise<readonly IReviewProvenanceEntry[]> {
+		const client = this.daemonClient;
+		if (!client || this.connectionState.get().mode !== 'daemon') {
+			return Object.freeze([]);
+		}
+		this.requireSupportedReadMethod(client, 'review.provenance.list');
+
+		const result = await client.request('review.provenance.list', { dispatch_id: dispatchId, limit: 64 });
+		return Object.freeze(result.entries.map(entry => ({
+			id: entry.id,
+			dispatch_id: entry.dispatch_id,
+			method: entry.method,
+			rid: entry.rid,
+			actor_role: normalizeOptionalString(entry.actor_role),
+			client_id: normalizeOptionalString(entry.client_id),
+			identity: normalizeOptionalString(entry.identity),
+			outcome: entry.outcome,
+			created_at: entry.created_at,
+			provenance: entry.provenance,
+		})));
 	}
 
 	async pauseAgent(dispatchId: string): Promise<void> {
@@ -447,8 +613,23 @@ export class HarnessService extends Disposable implements IHarnessService {
 		this.publishMergeState();
 	}
 
-	subscribeAgentActivity(_dispatchId: string): IObservable<readonly AtlasModel.ITranscriptEntry[]> {
-		return EMPTY_TRANSCRIPTS;
+	subscribeAgentActivity(dispatchId: string): IObservable<readonly AtlasModel.ITranscriptEntry[]> {
+		if (this.connectionState.get().mode !== 'daemon') {
+			return EMPTY_TRANSCRIPTS;
+		}
+
+		let observable = this.agentActivityObservables.get(dispatchId);
+		if (!observable) {
+			observable = observableValue(`harnessAgentActivity:${dispatchId}`, Object.freeze([]) as readonly AtlasModel.ITranscriptEntry[]);
+			this.agentActivityObservables.set(dispatchId, observable);
+			void this.getAgentActivity(dispatchId).then(events => {
+				observable?.set(events, undefined, undefined);
+			}, error => {
+				this.logService.warn(`Harness agent.activity.get failed closed for '${dispatchId}': ${asError(error).message}`);
+			});
+		}
+
+		return observable;
 	}
 
 	subscribeSwarmActivity(_swarmId: string): IObservable<readonly AtlasModel.ITranscriptEntry[]> {
@@ -906,6 +1087,10 @@ export class HarnessService extends Disposable implements IHarnessService {
 		this.mergeRecords = Object.freeze([]);
 		this.rootedTaskIds = Object.freeze([]);
 		this.taskTrees.clear();
+		for (const observable of this.agentActivityObservables.values()) {
+			observable.set(Object.freeze([]), undefined, undefined);
+		}
+		this.agentActivityObservables.clear();
 		this.subscriptionIds = emptySubscriptionIds();
 		this.taskRefreshRequested = false;
 		this.fleet.set(EMPTY_FLEET_STATE, undefined, undefined);
@@ -972,6 +1157,15 @@ export class HarnessService extends Disposable implements IHarnessService {
 			throw new Error(`Current harness daemon does not grant ${requiredCapability} capability for ${method}.`);
 		}
 		return client;
+	}
+
+	private requireSupportedReadMethod<TMethod extends string>(client: HarnessDaemonClient, method: TMethod): void {
+		if (!client.supportsMethod(method)) {
+			throw new Error(`Current harness daemon does not expose ${method}.`);
+		}
+		if (!client.grantedCapabilities.includes('read')) {
+			throw new Error(`Current harness daemon does not grant read capability for ${method}.`);
+		}
 	}
 
 	private failUnsupportedWrite(method: string): never {
@@ -1414,6 +1608,66 @@ function distinctPaths(values: readonly (string | undefined)[]): readonly string
 		result.push(value);
 	}
 	return result;
+}
+
+function toArtifactInventory(result: {
+	readonly dispatch_id: string;
+	readonly task_id: string;
+	readonly objective_id?: string;
+	readonly artifact_bundle_dir: string;
+	readonly artifacts: readonly {
+		readonly artifact_path: string;
+		readonly absolute_path: string;
+		readonly kind: string;
+		readonly size_bytes: number;
+	}[];
+	readonly truncated: boolean;
+}): IHarnessArtifactInventory {
+	return {
+		dispatchId: result.dispatch_id,
+		taskId: result.task_id,
+		objectiveId: normalizeOptionalString(result.objective_id),
+		artifactBundleDir: result.artifact_bundle_dir,
+		artifacts: Object.freeze(result.artifacts.map(artifact => ({
+			artifactPath: artifact.artifact_path,
+			absolutePath: artifact.absolute_path,
+			kind: artifact.kind as IHarnessArtifactInventory['artifacts'][number]['kind'],
+			sizeBytes: Math.max(0, artifact.size_bytes),
+		}))),
+		truncated: result.truncated,
+	};
+}
+
+function toArtifactPreview(result: {
+	readonly dispatch_id: string;
+	readonly task_id: string;
+	readonly objective_id?: string;
+	readonly artifact_bundle_dir: string;
+	readonly artifact: {
+		readonly artifact_path: string;
+		readonly absolute_path: string;
+		readonly kind: string;
+		readonly size_bytes: number;
+	};
+	readonly text_preview?: string;
+	readonly preview_truncated: boolean;
+	readonly is_utf8_text: boolean;
+}): IHarnessArtifactPreview {
+	return {
+		dispatchId: result.dispatch_id,
+		taskId: result.task_id,
+		objectiveId: normalizeOptionalString(result.objective_id),
+		artifactBundleDir: result.artifact_bundle_dir,
+		artifact: {
+			artifactPath: result.artifact.artifact_path,
+			absolutePath: result.artifact.absolute_path,
+			kind: result.artifact.kind as IHarnessArtifactPreview['artifact']['kind'],
+			sizeBytes: Math.max(0, result.artifact.size_bytes),
+		},
+		textPreview: normalizeOptionalString(result.text_preview),
+		previewTruncated: result.preview_truncated,
+		isUtf8Text: result.is_utf8_text,
+	};
 }
 
 async function recentEnough(targetPath: string): Promise<boolean> {

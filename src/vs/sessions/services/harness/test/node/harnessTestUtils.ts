@@ -14,6 +14,9 @@ import {
 	HARNESS_SCHEMA_VERSION,
 } from '../../common/harnessProtocol.js';
 import type {
+	IAgentActivityGetResult,
+	IArtifactGetResult,
+	IArtifactListResult,
 	IControlResult,
 	IDispatchSubmitResult,
 	IDaemonHealthState,
@@ -25,6 +28,7 @@ import type {
 	IHarnessInitializeResult,
 	IMergeListResult,
 	IMergeQueueRecord,
+	IMemoryListResult,
 	IObjectiveSubmitResult,
 	IObjectiveDetail,
 	IObjectiveListResult,
@@ -37,11 +41,16 @@ import type {
 	IReviewEnqueueMergeResult,
 	IReviewGateVerdictResult,
 	IReviewListResult,
+	IReviewProvenanceListResult,
+	IResultGetResult,
 	ISubscriptionAck,
 	ITaskDetail,
 	ITaskListResult,
 	ITaskNode,
 	ITaskTreeResult,
+	ITranscriptGetResult,
+	IWorktreeGetResult,
+	IWorktreeListResult,
 } from '../../common/harnessTypes.js';
 
 export interface IMockHarnessRequest {
@@ -79,6 +88,16 @@ export interface IMockHarnessDaemonOptions {
 	readonly reviewEnqueueMergeResult?: IReviewEnqueueMergeResult;
 	readonly mergeListResult?: IMergeListResult;
 	readonly mergeRecord?: IMergeQueueRecord;
+	readonly artifactListResult?: IArtifactListResult;
+	readonly artifactGetResult?: IArtifactGetResult;
+	readonly agentActivityResult?: IAgentActivityGetResult;
+	readonly memoryListResult?: IMemoryListResult;
+	readonly memoryRecord?: AtlasModel.IWireMemoryRecord;
+	readonly resultGetResult?: IResultGetResult;
+	readonly transcriptGetResult?: ITranscriptGetResult;
+	readonly worktreeGetResult?: IWorktreeGetResult;
+	readonly worktreeListResult?: IWorktreeListResult;
+	readonly reviewProvenanceListResult?: IReviewProvenanceListResult;
 	readonly taskListResult?: ITaskListResult;
 	readonly taskTreeResult?: ITaskTreeResult;
 	readonly taskDetail?: ITaskDetail;
@@ -115,7 +134,20 @@ export function createHarnessInitializeResult(overrides: Partial<IHarnessInitial
 			metrics_path: '/tmp/atlas-workspace/.codex/workspace-comms/metrics.jsonl',
 			...overrides.fabric_identity,
 		},
-		supported_methods: Object.freeze(['initialize', ...HARNESS_REQUIRED_DAEMON_METHODS]),
+		supported_methods: Object.freeze([
+			'initialize',
+			...HARNESS_REQUIRED_DAEMON_METHODS,
+			'artifact.list',
+			'artifact.get',
+			'agent.activity.get',
+			'memory.get',
+			'memory.list',
+			'result.get',
+			'review.provenance.list',
+			'transcript.get',
+			'worktree.get',
+			'worktree.list',
+		]),
 		limits: {
 			max_message_bytes: 4 * 1024 * 1024,
 			max_subscriptions: 64,
@@ -521,6 +553,184 @@ export function createEventEmitResult(overrides: Partial<IEventEmitResult> = {})
 	};
 }
 
+export function createArtifactListResult(overrides: Partial<IArtifactListResult> = {}): IArtifactListResult {
+	return {
+		dispatch_id: 'disp-1',
+		task_id: 'TASK-ROOT-1',
+		artifact_bundle_dir: '/tmp/artifacts/disp-1',
+		artifacts: Object.freeze([
+			{
+				artifact_path: 'result_packet.json',
+				absolute_path: '/tmp/artifacts/disp-1/result_packet.json',
+				kind: 'result_packet',
+				size_bytes: 512,
+			},
+		]),
+		truncated: false,
+		...overrides,
+	};
+}
+
+export function createArtifactGetResult(overrides: Partial<IArtifactGetResult> = {}): IArtifactGetResult {
+	return {
+		dispatch_id: 'disp-1',
+		task_id: 'TASK-ROOT-1',
+		artifact_bundle_dir: '/tmp/artifacts/disp-1',
+		artifact: {
+			artifact_path: 'result_packet.json',
+			absolute_path: '/tmp/artifacts/disp-1/result_packet.json',
+			kind: 'result_packet',
+			size_bytes: 512,
+		},
+		text_preview: '{\"status\":\"done\"}',
+		preview_truncated: false,
+		is_utf8_text: true,
+		...overrides,
+	};
+}
+
+export function createAgentActivityResult(overrides: Partial<IAgentActivityGetResult> = {}): IAgentActivityGetResult {
+	return {
+		dispatch_id: 'disp-1',
+		available: true,
+		run_manifest_path: '/tmp/dispatch-runs/disp-1/run-manifest.json',
+		activity_stream_path: '/tmp/dispatch-runs/disp-1/activity.jsonl',
+		events: Object.freeze([
+			{
+				ts: '2026-03-11T12:05:00.000Z',
+				dispatch_id: 'disp-1',
+				task_id: 'TASK-ROOT-1',
+				objective_id: 'OBJ-1',
+				role_id: 'planner',
+				handoff_type: 'planning',
+				kind: 'reasoning',
+				summary: 'Re-planned the task graph',
+				payload: { note: 'test' },
+			},
+		]),
+		...overrides,
+	};
+}
+
+export function createMemoryListResult(overrides: Partial<IMemoryListResult> = {}): IMemoryListResult {
+	return {
+		records: Object.freeze([
+			{
+				header: {
+					record_id: 'mem-1',
+					memory_type: 'decision',
+					scope: 'planner_tree',
+					authority: 'evidence_accepted',
+					lifecycle: 'accepted',
+					task_id: 'TASK-ROOT-1',
+					dispatch_id: 'disp-1',
+					source_artifact_path: 'artifacts/result_packet.json',
+					source_digest: 'sha256:test',
+					created_by_role: 'planner',
+					created_by_actor: 'planner:test',
+					created_at: '2026-03-11T12:06:00.000Z',
+				},
+				body: {
+					memory_type: 'decision',
+					body: {
+						decision_text: 'Keep the bridge read-only.',
+						scope_paths: Object.freeze(['src/vs/sessions']),
+					},
+				},
+			},
+		]),
+		...overrides,
+	};
+}
+
+export function createResultGetResult(overrides: Partial<IResultGetResult> = {}): IResultGetResult {
+	return {
+		dispatch_id: 'disp-1',
+		result_packet_path: '/tmp/artifacts/disp-1/result_packet.json',
+		result_packet: {
+			task_id: 'TASK-ROOT-1',
+			created_at: '2026-03-11T12:07:00.000Z',
+			from_role: 'planner',
+			to_role: 'planner',
+			status: 'done',
+			summary: 'Completed the assigned work',
+			artifacts: Object.freeze(['result_packet.json']),
+			commands: Object.freeze(['npm test']),
+			risks: Object.freeze([]),
+			acceptance_results: Object.freeze([]),
+			next_actions: Object.freeze([]),
+			commit_shas: Object.freeze(['abc123']),
+			working_tree_clean: true,
+			pushed: false,
+			merge_ready: true,
+			workspace_events: Object.freeze([]),
+		},
+		...overrides,
+	};
+}
+
+export function createTranscriptGetResult(overrides: Partial<ITranscriptGetResult> = {}): ITranscriptGetResult {
+	return {
+		dispatch_id: 'disp-1',
+		available: true,
+		metadata: {
+			dispatch_id: 'disp-1',
+			model: 'gpt-5',
+		},
+		excerpt_jsonl: '{"role":"assistant","content":"Planned the next step."}',
+		...overrides,
+	};
+}
+
+export function createWorktreeGetResult(overrides: Partial<IWorktreeGetResult> = {}): IWorktreeGetResult {
+	return {
+		worktree_path: '/tmp/worktree',
+		dispatch_id: 'disp-1',
+		task_id: 'TASK-ROOT-1',
+		objective_id: 'OBJ-1',
+		branch: 'feature/test',
+		base_ref: 'main',
+		head_sha: 'abc123',
+		working_tree_clean: true,
+		merge_ready: true,
+		created_at: '2026-03-11T12:00:00.000Z',
+		updated_at: '2026-03-11T12:08:00.000Z',
+		...overrides,
+	};
+}
+
+export function createWorktreeListResult(overrides: Partial<IWorktreeListResult> = {}): IWorktreeListResult {
+	return {
+		root_task_id: 'TASK-ROOT-1',
+		objective_id: 'OBJ-1',
+		worktrees: Object.freeze([createWorktreeGetResult()]),
+		truncated: false,
+		...overrides,
+	};
+}
+
+export function createReviewProvenanceListResult(overrides: Partial<IReviewProvenanceListResult> = {}): IReviewProvenanceListResult {
+	return {
+		dispatch_id: 'disp-review-1',
+		entries: Object.freeze([
+			{
+				id: 1,
+				dispatch_id: 'disp-review-1',
+				method: 'review.gate_verdict',
+				rid: 'rid-review-gate-1',
+				actor_role: 'axiom-judge',
+				client_id: 'atlas-0001',
+				identity: 'operator:test',
+				outcome: 'applied',
+				created_at: '2026-03-11T12:09:00.000Z',
+				provenance: { decision: 'go' },
+			},
+		]),
+		truncated: false,
+		...overrides,
+	};
+}
+
 export async function startMockHarnessDaemon(options: IMockHarnessDaemonOptions = {}): Promise<IMockHarnessDaemonServer> {
 	const ownedRoot = options.socketPath ? undefined : await fs.mkdtemp(join(os.tmpdir(), 'atlas-harness-test-'));
 	const socketPath = options.socketPath ?? join(ownedRoot!, 'harness.sock');
@@ -620,6 +830,12 @@ export async function startMockHarnessDaemon(options: IMockHarnessDaemonOptions 
 				return { result: options.initializeResult ?? createHarnessInitializeResult() };
 			case 'daemon.ping':
 				return { result: options.pingResult ?? createHarnessPingResult() };
+			case 'artifact.list':
+				return { result: options.artifactListResult ?? createArtifactListResult() };
+			case 'artifact.get':
+				return { result: options.artifactGetResult ?? createArtifactGetResult() };
+			case 'agent.activity.get':
+				return { result: options.agentActivityResult ?? createAgentActivityResult() };
 			case 'control.pause':
 				return {
 					result: options.controlResult ?? createControlResult(),
@@ -683,12 +899,26 @@ export async function startMockHarnessDaemon(options: IMockHarnessDaemonOptions 
 				return { result: options.mergeListResult ?? createMergeListResult() };
 			case 'merge.get':
 				return { result: options.mergeRecord ?? createMergeQueueRecord() };
+			case 'memory.get':
+				return { result: options.memoryRecord ?? createMemoryListResult().records[0] };
+			case 'memory.list':
+				return { result: options.memoryListResult ?? createMemoryListResult() };
+			case 'result.get':
+				return { result: options.resultGetResult ?? createResultGetResult() };
+			case 'review.provenance.list':
+				return { result: options.reviewProvenanceListResult ?? createReviewProvenanceListResult() };
 			case 'task.list':
 				return { result: options.taskListResult ?? createTaskListResult() };
 			case 'task.tree':
 				return { result: options.taskTreeResult ?? createTaskTreeResult() };
 			case 'task.get':
 				return { result: options.taskDetail ?? createTaskDetail() };
+			case 'transcript.get':
+				return { result: options.transcriptGetResult ?? createTranscriptGetResult() };
+			case 'worktree.get':
+				return { result: options.worktreeGetResult ?? createWorktreeGetResult() };
+			case 'worktree.list':
+				return { result: options.worktreeListResult ?? createWorktreeListResult() };
 			case 'shutdown':
 				return { result: {}, close: true };
 			default:

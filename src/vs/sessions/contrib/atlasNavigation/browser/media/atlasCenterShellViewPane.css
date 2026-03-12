@@ -7,6 +7,26 @@
 	height: 100%;
 }
 
+.atlas-center-shell-layout {
+	display: grid;
+	grid-template-columns: minmax(0, 2.2fr) minmax(280px, 0.95fr);
+	gap: 0;
+	height: 100%;
+}
+
+.atlas-center-shell-main-region {
+	min-width: 0;
+	min-height: 0;
+}
+
+.atlas-center-shell-inspector-region {
+	min-width: 0;
+	min-height: 0;
+	border-left: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 72%, transparent);
+	background:
+		linear-gradient(180deg, color-mix(in srgb, var(--vscode-sideBar-background) 95%, transparent), color-mix(in srgb, var(--vscode-sideBar-background) 88%, transparent));
+}
+
 .atlas-center-shell-root {
 	display: flex;
 	flex-direction: column;
@@ -802,12 +822,245 @@
 	color: color-mix(in srgb, var(--vscode-foreground) 72%, transparent);
 }
 
+.atlas-center-shell-inspector {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	height: 100%;
+	padding: 20px 18px 24px;
+	overflow-y: auto;
+}
+
+.atlas-center-shell-inspector-header {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding-bottom: 12px;
+	border-bottom: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 72%, transparent);
+}
+
+.atlas-center-shell-inspector-title {
+	margin: 0;
+	font-size: 18px;
+	font-weight: 700;
+}
+
+.atlas-center-shell-inspector-subtitle {
+	font-size: 12px;
+	line-height: 1.45;
+	color: color-mix(in srgb, var(--vscode-foreground) 72%, transparent);
+}
+
+.atlas-center-shell-inspector-sections {
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+
+.atlas-inspector-section {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 14px;
+	border-radius: 16px;
+	border: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 72%, transparent);
+	background: color-mix(in srgb, var(--vscode-sideBar-background) 88%, transparent);
+}
+
+.atlas-inspector-section-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.atlas-inspector-section-title {
+	font-size: 14px;
+	font-weight: 700;
+}
+
+.atlas-inspector-section-state {
+	padding: 3px 8px;
+	border-radius: 999px;
+	font-size: 10px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	background: color-mix(in srgb, var(--vscode-sideBar-background) 84%, transparent);
+}
+
+.atlas-inspector-section-state-loading,
+.atlas-inspector-section-state-ready {
+	border: 1px solid color-mix(in srgb, var(--vscode-editorInfo-foreground) 45%, transparent);
+}
+
+.atlas-inspector-section-state-empty {
+	border: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 72%, transparent);
+}
+
+.atlas-inspector-section-state-error {
+	border: 1px solid color-mix(in srgb, var(--vscode-editorError-foreground) 52%, transparent);
+}
+
+.atlas-inspector-section-content {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.atlas-inspector-section-empty,
+.atlas-inspector-note {
+	font-size: 12px;
+	line-height: 1.45;
+	color: color-mix(in srgb, var(--vscode-foreground) 70%, transparent);
+}
+
+.atlas-inspector-overview-details {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+	gap: 10px;
+}
+
+.atlas-inspector-detail {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 12px;
+	border-radius: 14px;
+	border: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 72%, transparent);
+	background: color-mix(in srgb, var(--vscode-sideBar-background) 82%, transparent);
+}
+
+.atlas-inspector-detail-label,
+.atlas-inspector-meta-label {
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: color-mix(in srgb, var(--vscode-foreground) 62%, transparent);
+}
+
+.atlas-inspector-detail-value,
+.atlas-inspector-meta-value,
+.atlas-inspector-card-body,
+.atlas-inspector-list-title {
+	font-size: 12px;
+	line-height: 1.45;
+	word-break: break-word;
+}
+
+.atlas-inspector-links {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.atlas-inspector-link {
+	padding: 6px 10px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 70%, transparent);
+	background: color-mix(in srgb, var(--vscode-sideBar-background) 82%, transparent);
+	color: inherit;
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.atlas-inspector-link:hover {
+	color: var(--vscode-textLink-foreground);
+}
+
+.atlas-inspector-card-list,
+.atlas-inspector-list {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.atlas-inspector-card,
+.atlas-inspector-list-row {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 12px;
+	border-radius: 14px;
+	border: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 68%, transparent);
+	background: color-mix(in srgb, var(--vscode-sideBar-background) 80%, transparent);
+}
+
+.atlas-inspector-card-heading {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 10px;
+}
+
+.atlas-inspector-card-title,
+.atlas-inspector-list-title {
+	font-size: 13px;
+	font-weight: 700;
+}
+
+.atlas-inspector-card-status,
+.atlas-inspector-list-subtitle {
+	font-size: 11px;
+	color: color-mix(in srgb, var(--vscode-foreground) 72%, transparent);
+}
+
+.atlas-inspector-metadata {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+	gap: 10px;
+}
+
+.atlas-inspector-meta-item {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.atlas-inspector-string-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.atlas-inspector-badges {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.atlas-inspector-badge {
+	display: inline-flex;
+	align-items: center;
+	padding: 4px 8px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 70%, transparent);
+	background: color-mix(in srgb, var(--vscode-sideBar-background) 80%, transparent);
+	font-size: 11px;
+	font-weight: 600;
+}
+
+.atlas-inspector-preformatted {
+	padding: 10px 12px;
+	border-radius: 12px;
+	border: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 68%, transparent);
+	background: color-mix(in srgb, var(--vscode-editor-background) 92%, transparent);
+	font-family: var(--monaco-monospace-font);
+	font-size: 11px;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
 .atlas-center-shell-item.attention-critical,
 .atlas-center-shell-stat.attention-critical,
 .atlas-fleet-command-item.attention-critical,
 .atlas-fleet-command-group-count.attention-critical,
 .atlas-review-workspace-detail.attention-critical,
-.atlas-review-workspace-entry.attention-critical {
+.atlas-review-workspace-entry.attention-critical,
+.atlas-inspector-detail.attention-critical,
+.atlas-inspector-card.attention-critical {
 	border-color: color-mix(in srgb, var(--vscode-editorError-foreground) 65%, transparent);
 }
 
@@ -816,7 +1069,9 @@
 .atlas-fleet-command-item.attention-needs-action,
 .atlas-fleet-command-group-count.attention-needs-action,
 .atlas-review-workspace-detail.attention-needs-action,
-.atlas-review-workspace-entry.attention-needs-action {
+.atlas-review-workspace-entry.attention-needs-action,
+.atlas-inspector-detail.attention-needs-action,
+.atlas-inspector-card.attention-needs-action {
 	border-color: color-mix(in srgb, var(--vscode-editorWarning-foreground) 65%, transparent);
 }
 
@@ -825,11 +1080,22 @@
 .atlas-fleet-command-item.attention-active,
 .atlas-fleet-command-group-count.attention-active,
 .atlas-review-workspace-detail.attention-active,
-.atlas-review-workspace-entry.attention-active {
+.atlas-review-workspace-entry.attention-active,
+.atlas-inspector-detail.attention-active,
+.atlas-inspector-card.attention-active {
 	border-color: color-mix(in srgb, var(--vscode-editorInfo-foreground) 60%, transparent);
 }
 
 @media (max-width: 900px) {
+	.atlas-center-shell-layout {
+		grid-template-columns: 1fr;
+	}
+
+	.atlas-center-shell-inspector-region {
+		border-left: 0;
+		border-top: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 72%, transparent);
+	}
+
 	.atlas-center-shell-item {
 		grid-template-columns: 1fr;
 	}

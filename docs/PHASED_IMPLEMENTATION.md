@@ -1162,7 +1162,7 @@ export function mapWireAgent(wire: IWireAgentState): IAgentState {
 
 Atlas validates `initialize.fabric_identity.repo_root` against the opened workspace and fails closed on mismatch. `task.list` is treated as root-task anchors only, `task.tree` is the rooted lineage primitive, and Phase 3 now derives `IHarnessService.swarms` from that rooted state. Polling fallback remains intentionally narrow and read-only: it still only surfaces fleet and derived health from SQLite, because mirroring every daemon family locally would create a second privileged control plane.
 
-The daemon branch already exposes additional read methods beyond the current Atlas bridge adoption, including `cost.get`, `agent.activity.get`, `transcript.get`, `task.subscribe`, `task.unsubscribe`, `memory.get`, `memory.list`, `result.get`, and `worktree.get`. Atlas still leaves those surfaces intentionally unimplemented in Wave D, so they remain explicit empty/default product surfaces until the next bridge wave adopts them truthfully.
+The daemon branch already exposes additional read methods beyond the merged Wave D bridge. Atlas now consumes the inspector-scoped subset truthfully in Phase 8: `artifact.list`, `artifact.get`, `memory.get`, `memory.list`, `result.get`, `review.provenance.list`, `agent.activity.get`, `transcript.get`, `worktree.get`, and `worktree.list`. Atlas still leaves `task.subscribe`, `task.unsubscribe`, the deep inspector subscribe/unsubscribe families, and `cost.get` unconsumed until a later bridge wave adopts them truthfully.
 
 Atlas now delegates only the shipped daemon write subset:
 
@@ -1843,108 +1843,84 @@ The broader long-term center-stage roadmap remains later work:
 
 ---
 
-## Phase 8: Right Inspector
+## Phase 8: Deep Inspector
 
 ### Objective
 
-Context-sensitive detail panel in the auxiliary bar. Shows different content based on `ISelectedEntity`.
+Ship a sessions-scoped, read-only, selection-aware deep inspector inside the existing Atlas center shell. The inspector updates from the current selected swarm, task, agent, or review target and exposes only the daemon reads Atlas now truthfully consumes.
 
 ### Prerequisites
 
-Phase 3 (selection model with context keys).
+Phase 3 (selection model), Phase 4 (left rail), Phase 6 (distinct review target identity), and the Phase 8 bridge adoption of the shipped inspector read families.
 
 ### Deliverables
 
 ```
-src/vs/sessions/contrib/inspector/browser/
-├── inspector.contribution.ts          Register all inspector view containers
-├── agentInspector/
-│   └── agentInspectorViewPane.ts      Agent detail: role, cost, reasoning, files, policy
-├── taskInspector/
-│   └── taskInspectorViewPane.ts       Task detail: spec, criteria, deps, agent, progress
-├── reviewInspector/
-│   └── reviewInspectorViewPane.ts     Review detail: verdict history, approval chain
-├── worktreeInspector/
-│   └── worktreeInspectorViewPane.ts   Worktree detail: branch, commits, diff summary
+src/vs/sessions/contrib/atlasNavigation/browser/
+├── atlasCenterShellViewPane.ts        Existing center shell extended with right-side inspector region
+├── atlasInspectorModel.ts             Selection-aware async inspector model builder
+└── media/atlasCenterShellViewPane.css Inspector layout and card styles
+
+src/vs/sessions/services/harness/
+├── common/harnessProtocol.ts          Adopted inspector read methods
+├── common/harnessTypes.ts             Inspector read payload types
+└── electron-browser/harnessService.ts On-demand daemon reads for inspector sections
 ```
 
 ### Implementation Steps
 
-#### 8.1 — View container registration with `when` clauses
+#### 8.1 — Selection-aware inspector model
 
-```typescript
-// inspector.contribution.ts
+The merged Phase 8 implementation keeps the inspector inside the current sessions center shell rather than introducing a separate auxiliary-bar contribution. `atlasInspectorModel.ts` resolves the selected entity and loads only the truthful read scope for that selection:
 
-// Agent inspector — shows when an agent is selected
-Registry.as<IViewContainersRegistry>(ViewExtensions.ViewContainersModel)
-    .registerViewContainer({
-        id: 'atlas.inspector.agent',
-        title: nls.localize2('agentInspector', "Agent Inspector"),
-        ctorDescriptor: new SyncDescriptor(ViewPaneContainer),
-        icon: agentInspectorIcon,
-        when: ContextKeyExpr.equals('atlas.selectedEntityKind', 'agent'),
-        windowVisibility: WindowVisibility.Sessions,
-    }, ViewContainerLocation.AuxiliaryBar);
+- `Swarm`
+  - overview
+  - rooted worktree list via `worktree.list`
+  - rooted memory via `memory.list(root_task_id)`
+  - sparse result / artifact / activity / transcript / provenance sections
+- `Task`
+  - overview
+  - task-scoped memory via `memory.list(task_id)`
+  - dispatch-scoped result / worktree / artifact / activity / transcript only when the selected task has a current dispatch
+- `Agent`
+  - overview
+  - dispatch-scoped worktree via `worktree.get`
+  - dispatch-scoped result via `result.get`
+  - dispatch-scoped artifacts via `artifact.list` + `artifact.get`
+  - dispatch-scoped activity via `agent.activity.get`
+  - dispatch-scoped transcript via `transcript.get`
+- `Review`
+  - the same dispatch-scoped worktree / result / artifacts / activity / transcript reads
+  - review-target-scoped provenance via `review.provenance.list`, filtered by `ReviewTargetKind`
 
-// Task inspector — shows when a task is selected
-Registry.as<IViewContainersRegistry>(ViewExtensions.ViewContainersModel)
-    .registerViewContainer({
-        id: 'atlas.inspector.task',
-        title: nls.localize2('taskInspector', "Task Inspector"),
-        ctorDescriptor: new SyncDescriptor(ViewPaneContainer),
-        icon: taskInspectorIcon,
-        when: ContextKeyExpr.equals('atlas.selectedEntityKind', 'task'),
-        windowVisibility: WindowVisibility.Sessions,
-    }, ViewContainerLocation.AuxiliaryBar);
+#### 8.2 — Inspector sections shipped
 
-// Similarly for review, worktree, objective inspectors
-```
+The merged inspector exposes these read-only sections:
 
-The auxiliary bar already has card-style appearance in the sessions layer (`AuxiliaryBarPart`). Each inspector panel fills the auxiliary bar when its `when` clause is active.
+- `Overview`
+- `Worktree`
+- `Result`
+- `Artifacts`
+- `Memory`
+- `Activity`
+- `Transcript`
+- `Provenance`
 
-#### 8.2 — Inspector panes
+Hard edges:
 
-Each inspector reads from `IHarnessService` using the selected entity ID:
-
-```typescript
-// agentInspector/agentInspectorViewPane.ts
-
-export class AgentInspectorViewPane extends ViewPane {
-    constructor(...) {
-        super(...);
-    }
-
-    protected override renderBody(container: HTMLElement): void {
-        this._register(autorun(reader => {
-            const entity = this.fleetService.selectedEntity.read(reader);
-            if (entity?.kind !== EntityKind.Agent) { return; }
-            const agent = this.harnessService.fleet.read(reader)
-                .agents.find(a => a.dispatchId === entity.id);
-            if (agent) {
-                this.renderAgentDetail(container, agent);
-            }
-        }));
-    }
-
-    private renderAgentDetail(container: HTMLElement, agent: IAgentState): void {
-        // Role and status
-        // Current task (linked — click to select task)
-        // Cost breakdown
-        // Time in state
-        // Last N activity lines
-        // Worktree path and branch
-        // Memory records authored by this agent
-        // Actions: Steer, Pause, Cancel, Open Terminal
-    }
-}
-```
+- no fake swarm-global activity or transcript replay
+- no fake rooted aggregate result list
+- no binary artifact transport UI
+- provenance remains distinct for gate vs. merge targets on the same dispatch
+- sparse state is preferred over invented detail whenever the current selection lacks truthful scope
 
 ### Validation
 
-- Selecting an agent in the fleet grid or left rail shows the agent inspector in the auxiliary bar
-- Selecting a task shows the task inspector
-- Switching selection type transitions smoothly between inspector panels
-- Inspector content updates reactively as harness state changes
+- Selecting a swarm, task, agent, or review target shows a right-side inspector region inside the sessions center shell
+- Gate and merge targets with the same `dispatchId` still render distinct provenance
+- Swarm and task selections do not invent dispatch-scoped result / artifact / transcript truth when no current dispatch exists
+- Agent and review selections show truthful dispatch-scoped worktree / result / artifact / activity / transcript state when the daemon exposes it
+- Polling and browser stub modes remain read-only and sparse for the deep inspector surfaces
 
 ---
 

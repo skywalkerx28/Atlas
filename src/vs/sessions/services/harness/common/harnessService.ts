@@ -7,7 +7,14 @@ import { Event } from '../../../../base/common/event.js';
 import { IObservable } from '../../../../base/common/observable.js';
 import { URI } from '../../../../base/common/uri.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
-import type { HarnessSupportedWriteMethod, IHarnessTaskTree } from './harnessTypes.js';
+import type {
+	HarnessSupportedWriteMethod,
+	IHarnessArtifactInventory,
+	IHarnessArtifactPreview,
+	IReviewProvenanceEntry,
+	IHarnessTaskTree,
+	IHarnessTranscriptSnapshot,
+} from './harnessTypes.js';
 
 export const IHarnessService = createDecorator<IHarnessService>('harnessService');
 
@@ -60,9 +67,16 @@ export interface IHarnessService {
 	getMergeEntry(dispatchId: string): Promise<AtlasModel.IMergeEntry | undefined>;
 	getTaskPacket(taskId: string): Promise<AtlasModel.IWireTaskPacket | undefined>;
 	getResultPacket(dispatchId: string): Promise<AtlasModel.IWireResultPacket | undefined>;
-	getTranscript(dispatchId: string): Promise<readonly AtlasModel.ITranscriptEntry[]>;
+	getTranscript(dispatchId: string): Promise<IHarnessTranscriptSnapshot | undefined>;
 	getMemoryRecords(swarmId: string): Promise<readonly AtlasModel.IWireMemoryRecord[]>;
+	getTaskMemoryRecords(taskId: string): Promise<readonly AtlasModel.IWireMemoryRecord[]>;
+	getMemoryRecord(recordId: string): Promise<AtlasModel.IWireMemoryRecord | undefined>;
 	getWorktreeState(dispatchId: string): Promise<AtlasModel.IWorktreeState | undefined>;
+	getWorktreeStates(rootTaskId: string): Promise<readonly AtlasModel.IWorktreeState[]>;
+	getArtifacts(dispatchId: string): Promise<IHarnessArtifactInventory | undefined>;
+	getArtifactPreview(dispatchId: string, artifactPath: string): Promise<IHarnessArtifactPreview | undefined>;
+	getAgentActivity(dispatchId: string): Promise<readonly AtlasModel.ITranscriptEntry[]>;
+	getReviewProvenance(dispatchId: string): Promise<readonly IReviewProvenanceEntry[]>;
 
 	pauseAgent(dispatchId: string): Promise<void>;
 	resumeAgent(dispatchId: string): Promise<void>;

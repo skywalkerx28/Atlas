@@ -132,7 +132,7 @@ TypeScript interfaces for the Atlas first-class nouns, mapping from harness wire
 
 **Layering note**: The harness bridge is **desktop-only** (Phase 1). It requires either a Unix socket connection (daemon mode) or native file system access (read-only SQLite polling fallback). The `browser/` layer gets a stub implementation that returns "not connected." Web support comes later via the daemon's optional WebSocket bridge.
 
-Current merged scope note: the bridge still does not populate every `IHarnessService` observable, but it is no longer fleet-only. On the current harness daemon branch, Atlas now populates fleet, health, objectives, review gates, merge queue, rooted task lineage, and derived swarms from the public JSON-RPC surface, while leaving advisory review queue, transcripts, memory, result packets, and worktree inspection empty/default until those daemon families land.
+Current merged scope note: the bridge still does not populate every `IHarnessService` observable, but it is no longer fleet-only. On the current harness daemon branch, Atlas now populates fleet, health, objectives, review gates, merge queue, rooted task lineage, and derived swarms from the public JSON-RPC surface, and Phase 8 adds on-demand inspector reads for worktrees, result packets, artifacts, memory, dispatch activity, transcripts, and review provenance. Advisory review queue and global cost adoption remain intentionally sparse until later bridge waves.
 
 ```
 sessions/services/harness/

@@ -230,9 +230,16 @@ class TestHarnessService extends Disposable {
 	async getMergeEntry(_dispatchId: string): Promise<AtlasModel.IMergeEntry | undefined> { return undefined; }
 	async getTaskPacket(_taskId: string): Promise<AtlasModel.IWireTaskPacket | undefined> { return undefined; }
 	async getResultPacket(_dispatchId: string): Promise<AtlasModel.IWireResultPacket | undefined> { return undefined; }
-	async getTranscript(_dispatchId: string): Promise<readonly AtlasModel.ITranscriptEntry[]> { return Object.freeze([]); }
+	async getTranscript(_dispatchId: string): Promise<import('../../../harness/common/harnessTypes.js').IHarnessTranscriptSnapshot | undefined> { return undefined; }
 	async getMemoryRecords(_swarmId: string): Promise<readonly AtlasModel.IWireMemoryRecord[]> { return Object.freeze([]); }
+	async getTaskMemoryRecords(_taskId: string): Promise<readonly AtlasModel.IWireMemoryRecord[]> { return Object.freeze([]); }
+	async getMemoryRecord(_recordId: string): Promise<AtlasModel.IWireMemoryRecord | undefined> { return undefined; }
 	async getWorktreeState(_dispatchId: string): Promise<AtlasModel.IWorktreeState | undefined> { return undefined; }
+	async getWorktreeStates(_rootTaskId: string): Promise<readonly AtlasModel.IWorktreeState[]> { return Object.freeze([]); }
+	async getArtifacts(_dispatchId: string): Promise<import('../../../harness/common/harnessTypes.js').IHarnessArtifactInventory | undefined> { return undefined; }
+	async getArtifactPreview(_dispatchId: string, _artifactPath: string): Promise<import('../../../harness/common/harnessTypes.js').IHarnessArtifactPreview | undefined> { return undefined; }
+	async getAgentActivity(_dispatchId: string): Promise<readonly AtlasModel.ITranscriptEntry[]> { return Object.freeze([]); }
+	async getReviewProvenance(_dispatchId: string): Promise<readonly import('../../../harness/common/harnessTypes.js').IReviewProvenanceEntry[]> { return Object.freeze([]); }
 	async pauseAgent(_dispatchId: string): Promise<void> { throw new Error('unsupported'); }
 	async resumeAgent(_dispatchId: string): Promise<void> { throw new Error('unsupported'); }
 	async cancelAgent(_dispatchId: string): Promise<void> { throw new Error('unsupported'); }

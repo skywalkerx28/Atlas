@@ -62,6 +62,7 @@ declare global {
 		type WireTaskNodeStatus = import('./wire.js').WireTaskNodeStatus;
 		type WireWorkerState = import('./wire.js').WireWorkerState;
 		type IWireDispatchCommand = import('./wire.js').IWireDispatchCommand;
+		type IWireAgentActivityEvent = import('./wire.js').IWireAgentActivityEvent;
 		type IWireMemoryRecord = import('./wire.js').IWireMemoryRecord;
 		type IWireResultPacket = import('./wire.js').IWireResultPacket;
 		type IWireTaskPacket = import('./wire.js').IWireTaskPacket;

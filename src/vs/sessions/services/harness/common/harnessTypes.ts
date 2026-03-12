@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 export type IWireDispatchCommand = AtlasModel.IWireDispatchCommand;
+export type IWireAgentActivityEvent = AtlasModel.IWireAgentActivityEvent;
 export type IWireMemoryRecord = AtlasModel.IWireMemoryRecord;
 export type IWireResultPacket = AtlasModel.IWireResultPacket;
 export type IWireTaskPacket = AtlasModel.IWireTaskPacket;
@@ -614,4 +615,191 @@ export interface IHarnessFleetStateSnapshot {
 	readonly workers: readonly IHarnessWorkerRecord[];
 	readonly queue: IHarnessQueueSnapshot;
 	readonly health: IHarnessHealthSnapshot;
+}
+
+export type HarnessArtifactKind =
+	| 'result_packet'
+	| 'handoff'
+	| 'commit_evidence'
+	| 'dispatch_run'
+	| 'other';
+
+export interface IArtifactListParams {
+	readonly dispatch_id: string;
+	readonly limit?: number;
+}
+
+export interface IArtifactGetParams {
+	readonly dispatch_id: string;
+	readonly artifact_path: string;
+	readonly max_bytes?: number;
+}
+
+export interface IHarnessArtifactEntry {
+	readonly artifactPath: string;
+	readonly absolutePath: string;
+	readonly kind: HarnessArtifactKind;
+	readonly sizeBytes: number;
+}
+
+export interface IArtifactListResult {
+	readonly dispatch_id: string;
+	readonly task_id: string;
+	readonly objective_id?: string;
+	readonly artifact_bundle_dir: string;
+	readonly artifacts: readonly {
+		readonly artifact_path: string;
+		readonly absolute_path: string;
+		readonly kind: HarnessArtifactKind;
+		readonly size_bytes: number;
+	}[];
+	readonly truncated: boolean;
+}
+
+export interface IArtifactGetResult {
+	readonly dispatch_id: string;
+	readonly task_id: string;
+	readonly objective_id?: string;
+	readonly artifact_bundle_dir: string;
+	readonly artifact: {
+		readonly artifact_path: string;
+		readonly absolute_path: string;
+		readonly kind: HarnessArtifactKind;
+		readonly size_bytes: number;
+	};
+	readonly text_preview?: string;
+	readonly preview_truncated: boolean;
+	readonly is_utf8_text: boolean;
+}
+
+export interface IHarnessArtifactInventory {
+	readonly dispatchId: string;
+	readonly taskId: string;
+	readonly objectiveId: string | undefined;
+	readonly artifactBundleDir: string;
+	readonly artifacts: readonly IHarnessArtifactEntry[];
+	readonly truncated: boolean;
+}
+
+export interface IHarnessArtifactPreview {
+	readonly dispatchId: string;
+	readonly taskId: string;
+	readonly objectiveId: string | undefined;
+	readonly artifactBundleDir: string;
+	readonly artifact: IHarnessArtifactEntry;
+	readonly textPreview: string | undefined;
+	readonly previewTruncated: boolean;
+	readonly isUtf8Text: boolean;
+}
+
+export interface IAgentActivityGetParams {
+	readonly dispatch_id: string;
+	readonly max_events?: number;
+}
+
+export interface IAgentActivityGetResult {
+	readonly dispatch_id: string;
+	readonly available: boolean;
+	readonly run_manifest_path?: string;
+	readonly activity_stream_path?: string;
+	readonly events: readonly IWireAgentActivityEvent[];
+}
+
+export interface IMemoryGetParams {
+	readonly record_id: string;
+}
+
+export interface IMemoryListParams {
+	readonly root_task_id?: string;
+	readonly task_id?: string;
+	readonly limit?: number;
+}
+
+export interface IMemoryListResult {
+	readonly records: readonly IWireMemoryRecord[];
+}
+
+export interface IResultGetParams {
+	readonly dispatch_id: string;
+}
+
+export interface IResultGetResult {
+	readonly dispatch_id: string;
+	readonly result_packet_path: string;
+	readonly result_packet: IWireResultPacket;
+}
+
+export interface ITranscriptGetParams {
+	readonly dispatch_id: string;
+	readonly max_turns?: number;
+}
+
+export interface ITranscriptGetResult {
+	readonly dispatch_id: string;
+	readonly available: boolean;
+	readonly metadata?: unknown;
+	readonly excerpt_jsonl?: string;
+}
+
+export interface IHarnessTranscriptSnapshot {
+	readonly dispatchId: string;
+	readonly available: boolean;
+	readonly metadata: unknown | undefined;
+	readonly excerptJsonl: string | undefined;
+}
+
+export interface IWorktreeGetParams {
+	readonly dispatch_id: string;
+}
+
+export interface IWorktreeListParams {
+	readonly root_task_id: string;
+	readonly limit?: number;
+}
+
+export interface IWorktreeGetResult {
+	readonly worktree_path: string;
+	readonly dispatch_id: string;
+	readonly task_id: string;
+	readonly objective_id?: string;
+	readonly branch?: string;
+	readonly base_ref?: string;
+	readonly head_sha?: string;
+	readonly working_tree_clean?: boolean;
+	readonly merge_ready?: boolean;
+	readonly created_at?: string;
+	readonly updated_at?: string;
+}
+
+export interface IWorktreeListResult {
+	readonly root_task_id: string;
+	readonly objective_id?: string;
+	readonly worktrees: readonly IWorktreeGetResult[];
+	readonly truncated: boolean;
+}
+
+export interface IReviewProvenanceListParams {
+	readonly dispatch_id: string;
+	readonly limit?: number;
+	readonly before?: number;
+}
+
+export interface IReviewProvenanceEntry {
+	readonly id: number;
+	readonly dispatch_id: string;
+	readonly method: string;
+	readonly rid: string;
+	readonly actor_role?: string;
+	readonly client_id?: string;
+	readonly identity?: string;
+	readonly outcome: string;
+	readonly created_at: string;
+	readonly provenance: unknown;
+}
+
+export interface IReviewProvenanceListResult {
+	readonly dispatch_id: string;
+	readonly entries: readonly IReviewProvenanceEntry[];
+	readonly truncated: boolean;
+	readonly next_before?: number;
 }

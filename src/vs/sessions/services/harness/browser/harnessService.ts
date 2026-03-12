@@ -8,7 +8,13 @@ import { constObservable, IObservable } from '../../../../base/common/observable
 import { URI } from '../../../../base/common/uri.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { HarnessConnectionState, IHarnessConnectionInfo, IHarnessService } from '../common/harnessService.js';
-import type { IHarnessTaskTree } from '../common/harnessTypes.js';
+import type {
+	IHarnessArtifactInventory,
+	IHarnessArtifactPreview,
+	IReviewProvenanceEntry,
+	IHarnessTaskTree,
+	IHarnessTranscriptSnapshot,
+} from '../common/harnessTypes.js';
 
 const WEB_UNAVAILABLE_ERROR = 'Harness daemon is unavailable in web sessions.';
 const EMPTY_OBJECTIVES = constObservable(Object.freeze([]) as readonly AtlasModel.IObjectiveState[]);
@@ -117,16 +123,44 @@ export class HarnessService implements IHarnessService {
 		return undefined;
 	}
 
-	async getTranscript(_dispatchId: string): Promise<readonly AtlasModel.ITranscriptEntry[]> {
-		return Object.freeze([]);
+	async getTranscript(_dispatchId: string): Promise<IHarnessTranscriptSnapshot | undefined> {
+		return undefined;
 	}
 
 	async getMemoryRecords(_swarmId: string): Promise<readonly AtlasModel.IWireMemoryRecord[]> {
 		return Object.freeze([]);
 	}
 
+	async getTaskMemoryRecords(_taskId: string): Promise<readonly AtlasModel.IWireMemoryRecord[]> {
+		return Object.freeze([]);
+	}
+
+	async getMemoryRecord(_recordId: string): Promise<AtlasModel.IWireMemoryRecord | undefined> {
+		return undefined;
+	}
+
 	async getWorktreeState(_dispatchId: string): Promise<AtlasModel.IWorktreeState | undefined> {
 		return undefined;
+	}
+
+	async getWorktreeStates(_rootTaskId: string): Promise<readonly AtlasModel.IWorktreeState[]> {
+		return Object.freeze([]);
+	}
+
+	async getArtifacts(_dispatchId: string): Promise<IHarnessArtifactInventory | undefined> {
+		return undefined;
+	}
+
+	async getArtifactPreview(_dispatchId: string, _artifactPath: string): Promise<IHarnessArtifactPreview | undefined> {
+		return undefined;
+	}
+
+	async getAgentActivity(_dispatchId: string): Promise<readonly AtlasModel.ITranscriptEntry[]> {
+		return Object.freeze([]);
+	}
+
+	async getReviewProvenance(_dispatchId: string): Promise<readonly IReviewProvenanceEntry[]> {
+		return Object.freeze([]);
 	}
 
 	async pauseAgent(_dispatchId: string): Promise<void> {

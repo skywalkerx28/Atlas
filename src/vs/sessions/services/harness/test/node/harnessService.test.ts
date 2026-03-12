@@ -14,12 +14,16 @@ import { URI } from '../../../../../base/common/uri.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
 import { NullLogService } from '../../../../../platform/log/common/log.js';
 import type { IProductService } from '../../../../../platform/product/common/productService.js';
+import { ActivityEventKind, HandoffType } from '../../../../common/model/wire.js';
 import { HarnessConnectionState } from '../../common/harnessService.js';
 import { HarnessDaemonProtocolError, HarnessDaemonUnavailableError } from '../../electron-browser/harnessDaemonClient.js';
 import { HarnessService as BrowserHarnessService } from '../../browser/harnessService.js';
 import { HarnessService as DesktopHarnessService } from '../../electron-browser/harnessService.js';
 import type { HarnessCapability, HarnessSupportedWriteMethod, IHarnessFabricIdentity } from '../../common/harnessTypes.js';
 import {
+	createAgentActivityResult,
+	createArtifactGetResult,
+	createArtifactListResult,
 	createControlResult,
 	createDaemonHealthState,
 	createDispatchSubmitResult,
@@ -38,10 +42,16 @@ import {
 	createReviewEnqueueMergeResult,
 	createReviewGateVerdictResult,
 	createReviewListResult,
+	createReviewProvenanceListResult,
+	createResultGetResult,
 	createTaskDetail,
 	createTaskListResult,
 	createTaskNode,
 	createTaskTreeResult,
+	createTranscriptGetResult,
+	createWorktreeGetResult,
+	createWorktreeListResult,
+	createMemoryListResult,
 	startMockHarnessDaemon,
 } from './harnessTestUtils.js';
 
@@ -260,6 +270,178 @@ suite('HarnessService', () => {
 			assert.strictEqual((await service.getTaskTree('TASK-ROOT-1'))?.nodes.length, 2);
 			assert.strictEqual((await service.getReviewGate('disp-review-wave-c'))?.dispatchId, 'disp-review-wave-c');
 			assert.strictEqual((await service.getMergeEntry('disp-merge-wave-c'))?.dispatchId, 'disp-merge-wave-c');
+		} finally {
+			await service.disconnect();
+			await server.dispose();
+			await fixture.dispose();
+		}
+	});
+
+	test('loads phase 8 inspector read surfaces on demand through the daemon', async () => {
+		const fixture = await createDaemonFixture();
+		const memoryList = createMemoryListResult();
+		const artifactList = createArtifactListResult({
+			dispatch_id: 'disp-root',
+			task_id: 'TASK-ROOT-1',
+			objective_id: 'OBJ-1',
+		});
+		const artifactGet = createArtifactGetResult({
+			dispatch_id: 'disp-root',
+			task_id: 'TASK-ROOT-1',
+			objective_id: 'OBJ-1',
+		});
+		const worktreeGet = createWorktreeGetResult({
+			dispatch_id: 'disp-root',
+			task_id: 'TASK-ROOT-1',
+			objective_id: 'OBJ-1',
+		});
+		const worktreeList = createWorktreeListResult({
+			root_task_id: 'TASK-ROOT-1',
+			objective_id: 'OBJ-1',
+			worktrees: Object.freeze([
+				worktreeGet,
+				createWorktreeGetResult({
+					dispatch_id: 'disp-child',
+					task_id: 'TASK-CHILD-1',
+					objective_id: 'OBJ-1',
+					worktree_path: '/tmp/worktree-child',
+					branch: 'feature/child',
+					working_tree_clean: false,
+					merge_ready: false,
+				}),
+			]),
+		});
+		const server = await startMockHarnessDaemon({
+			socketPath: fixture.socketPath,
+			initializeResult: createHarnessInitializeResult({
+				fabric_identity: fixture.fabricIdentity,
+			}),
+			resultGetResult: createResultGetResult({
+				dispatch_id: 'disp-root',
+				result_packet: {
+					...createResultGetResult().result_packet,
+					task_id: 'TASK-ROOT-1',
+					summary: 'Inspector-ready result packet',
+				},
+			}),
+			transcriptGetResult: createTranscriptGetResult({
+				dispatch_id: 'disp-root',
+				available: true,
+				excerpt_jsonl: '{"role":"assistant","content":"Captured checkpoint"}',
+			}),
+			memoryListResult: memoryList,
+			memoryRecord: memoryList.records[0],
+			worktreeGetResult: worktreeGet,
+			worktreeListResult: worktreeList,
+			artifactListResult: artifactList,
+			artifactGetResult: artifactGet,
+			agentActivityResult: createAgentActivityResult({
+				dispatch_id: 'disp-root',
+				events: Object.freeze([
+					{
+						ts: '2026-03-11T12:05:00.000Z',
+						dispatch_id: 'disp-root',
+						task_id: 'TASK-ROOT-1',
+						objective_id: 'OBJ-1',
+						role_id: 'planner',
+						handoff_type: HandoffType.Planning,
+						kind: ActivityEventKind.Reasoning,
+						summary: 'Queued the next inspector refresh',
+						payload: { source: 'test' },
+					},
+				]),
+			}),
+			reviewProvenanceListResult: createReviewProvenanceListResult({
+				dispatch_id: 'disp-review-wave-c',
+			}),
+		});
+
+		const service = disposables.add(createDesktopHarnessService(fixture.homeRoot));
+		try {
+			await service.connect(URI.file(fixture.workspaceRoot));
+
+			const resultPacket = await service.getResultPacket('disp-root');
+			assert.strictEqual(resultPacket?.summary, 'Inspector-ready result packet');
+
+			const transcript = await service.getTranscript('disp-root');
+			assert.strictEqual(transcript?.available, true);
+			assert.strictEqual(transcript?.excerptJsonl, '{"role":"assistant","content":"Captured checkpoint"}');
+
+			const rootMemory = await service.getMemoryRecords('TASK-ROOT-1');
+			assert.strictEqual(rootMemory.length, 1);
+			assert.strictEqual(rootMemory[0].header.record_id, 'mem-1');
+
+			const taskMemory = await service.getTaskMemoryRecords('TASK-ROOT-1');
+			assert.strictEqual(taskMemory.length, 1);
+
+			const memoryRecord = await service.getMemoryRecord('mem-1');
+			assert.strictEqual(memoryRecord?.header.record_id, 'mem-1');
+
+			const worktreeState = await service.getWorktreeState('disp-root');
+			assert.strictEqual(worktreeState?.dispatchId, 'disp-root');
+			assert.strictEqual(worktreeState?.branch, 'feature/test');
+
+			const worktreeStates = await service.getWorktreeStates('TASK-ROOT-1');
+			assert.deepStrictEqual(worktreeStates.map(state => state.dispatchId), ['disp-root', 'disp-child']);
+			assert.strictEqual(worktreeStates[1].attentionLevel, 3);
+
+			const artifactInventory = await service.getArtifacts('disp-root');
+			assert.strictEqual(artifactInventory?.artifacts.length, 1);
+			assert.strictEqual(artifactInventory?.artifacts[0].artifactPath, 'result_packet.json');
+
+			const artifactPreview = await service.getArtifactPreview('disp-root', 'result_packet.json');
+			assert.strictEqual(artifactPreview?.textPreview, '{"status":"done"}');
+
+			const activity = await service.getAgentActivity('disp-root');
+			assert.strictEqual(activity.length, 1);
+			assert.strictEqual(activity[0].dispatchId, 'disp-root');
+			assert.strictEqual(activity[0].summary, 'Queued the next inspector refresh');
+
+			const provenance = await service.getReviewProvenance('disp-review-wave-c');
+			assert.strictEqual(provenance.length, 1);
+			assert.strictEqual(provenance[0].method, 'review.gate_verdict');
+
+			for (const method of [
+				'result.get',
+				'transcript.get',
+				'memory.list',
+				'memory.get',
+				'worktree.get',
+				'worktree.list',
+				'artifact.list',
+				'artifact.get',
+				'agent.activity.get',
+				'review.provenance.list',
+			]) {
+				assert.ok(server.requests.some(request => request.method === method), `expected daemon request '${method}'`);
+			}
+		} finally {
+			await service.disconnect();
+			await server.dispose();
+			await fixture.dispose();
+		}
+	});
+
+	test('fails closed when an optional phase 8 inspector method is not exposed by the daemon', async () => {
+		const fixture = await createDaemonFixture();
+		const initializeResult = createHarnessInitializeResult({
+			fabric_identity: fixture.fabricIdentity,
+			supported_methods: Object.freeze(
+				createHarnessInitializeResult().supported_methods.filter(method => method !== 'artifact.get'),
+			),
+		});
+		const server = await startMockHarnessDaemon({
+			socketPath: fixture.socketPath,
+			initializeResult,
+		});
+		const service = disposables.add(createDesktopHarnessService(fixture.homeRoot));
+
+		try {
+			await service.connect(URI.file(fixture.workspaceRoot));
+			await assert.rejects(
+				() => service.getArtifactPreview('disp-root', 'result_packet.json'),
+				errorMessage('Current harness daemon does not expose artifact.get.'),
+			);
 		} finally {
 			await service.disconnect();
 			await server.dispose();

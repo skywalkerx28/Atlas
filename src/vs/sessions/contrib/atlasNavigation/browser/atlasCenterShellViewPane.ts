@@ -7,7 +7,8 @@
 
 import './media/atlasCenterShellViewPane.css';
 import * as DOM from '../../../../base/browser/dom.js';
-import { autorun } from '../../../../base/common/observable.js';
+import { autorun, observableValue, type IReader } from '../../../../base/common/observable.js';
+import { basename } from '../../../../base/common/path.js';
 import { localize2 } from '../../../../nls.js';
 import { AttentionLevel } from '../../../common/model/attention.js';
 import { EntityKind, NavigationSection, ReviewTargetKind } from '../../../common/model/selection.js';
@@ -41,6 +42,13 @@ import {
 	type ITaskWorkspaceSwarmCard,
 	type ITaskWorkspaceTaskEntry,
 } from './atlasNavigationModel.js';
+import {
+	buildAtlasInspectorModel,
+	createLoadingAtlasInspectorModel,
+	type IAtlasInspectorLink,
+	type IAtlasInspectorModel,
+	type IAtlasInspectorStateSnapshot,
+} from './atlasInspectorModel.js';
 import { AtlasReviewWorkspaceActionController } from './atlasReviewWorkspaceActions.js';
 
 const $ = DOM.$;
@@ -49,6 +57,8 @@ export class AtlasCenterShellViewPane extends ViewPane {
 
 	private bodyContainer: HTMLElement | undefined;
 	private readonly reviewWorkspaceActions: AtlasReviewWorkspaceActionController;
+	private readonly inspectorModel = observableValue<IAtlasInspectorModel | undefined>(this, undefined);
+	private inspectorRefreshToken = 0;
 
 	constructor(
 		options: IViewPaneOptions,
@@ -80,50 +90,100 @@ export class AtlasCenterShellViewPane extends ViewPane {
 
 		this._register(autorun(reader => {
 			const selection = this.fleetManagementService.selection.read(reader);
+			const state = this.readInspectorStateSnapshot(reader);
+			const loadingModel = createLoadingAtlasInspectorModel(selection, state);
+			this.inspectorModel.set(loadingModel, undefined, undefined);
+			const refreshToken = ++this.inspectorRefreshToken;
+			if (!loadingModel) {
+				return;
+			}
+
+			void this.refreshInspectorModel(refreshToken, selection, state);
+		}));
+
+		this._register(autorun(reader => {
+			const selection = this.fleetManagementService.selection.read(reader);
 			const reviewUiState = this.reviewWorkspaceActions.uiState.read(reader);
-			const state = {
-				connection: this.harnessService.connectionState.read(reader),
-				swarms: this.harnessService.swarms.read(reader),
-				tasks: this.harnessService.tasks.read(reader),
-				objectives: this.harnessService.objectives.read(reader),
-				fleet: this.harnessService.fleet.read(reader),
-				health: this.harnessService.health.read(reader),
-				reviewGates: this.harnessService.reviewGates.read(reader),
-				mergeQueue: this.harnessService.mergeQueue.read(reader),
-			};
+			const state = this.readInspectorStateSnapshot(reader);
+			const inspectorModel = this.inspectorModel.read(reader);
 
 			if (selection.section === NavigationSection.Fleet) {
-				this.renderFleetCommand(buildFleetCommandModel(state));
+				this.renderFleetCommand(buildFleetCommandModel(state), inspectorModel);
 				return;
 			}
 
 			if (selection.section === NavigationSection.Reviews) {
-				this.renderReviewWorkspace(buildReviewWorkspaceModel(selection, state, reviewUiState));
+				this.renderReviewWorkspace(buildReviewWorkspaceModel(selection, state, reviewUiState), inspectorModel);
 				return;
 			}
 
 			if (selection.section === NavigationSection.Tasks) {
-				this.renderTasksWorkspace(buildTasksWorkspaceModel(selection, state));
+				this.renderTasksWorkspace(buildTasksWorkspaceModel(selection, state), inspectorModel);
 				return;
 			}
 
 			if (selection.section === NavigationSection.Agents) {
-				this.renderAgentsWorkspace(buildAgentsWorkspaceModel(selection, state));
+				this.renderAgentsWorkspace(buildAgentsWorkspaceModel(selection, state), inspectorModel);
 				return;
 			}
 
-			this.renderShell(buildAtlasShellModel(selection, state));
+			this.renderShell(buildAtlasShellModel(selection, state), inspectorModel);
 		}));
 	}
 
-	private renderShell(model: ReturnType<typeof buildAtlasShellModel>): void {
+	private readInspectorStateSnapshot(reader: IReader): IAtlasInspectorStateSnapshot {
+		return {
+			connection: this.harnessService.connectionState.read(reader),
+			swarms: this.harnessService.swarms.read(reader),
+			tasks: this.harnessService.tasks.read(reader),
+			objectives: this.harnessService.objectives.read(reader),
+			fleet: this.harnessService.fleet.read(reader),
+			health: this.harnessService.health.read(reader),
+			reviewGates: this.harnessService.reviewGates.read(reader),
+			mergeQueue: this.harnessService.mergeQueue.read(reader),
+		};
+	}
+
+	private async refreshInspectorModel(
+		refreshToken: number,
+		selection: AtlasModel.INavigationSelection,
+		state: IAtlasInspectorStateSnapshot,
+	): Promise<void> {
+		const nextModel = await buildAtlasInspectorModel(selection, state, this.harnessService);
+		if (refreshToken !== this.inspectorRefreshToken) {
+			return;
+		}
+		this.inspectorModel.set(nextModel, undefined, undefined);
+	}
+
+	private prepareBodyLayout(inspectorModel: IAtlasInspectorModel | undefined): HTMLElement | undefined {
+		if (!this.bodyContainer) {
+			return undefined;
+		}
+
+		DOM.clearNode(this.bodyContainer);
+		if (!inspectorModel) {
+			return this.bodyContainer;
+		}
+
+		const layout = DOM.append(this.bodyContainer, $('div.atlas-center-shell-layout'));
+		const mainContainer = DOM.append(layout, $('div.atlas-center-shell-main-region'));
+		const inspectorContainer = DOM.append(layout, $('aside.atlas-center-shell-inspector-region'));
+		this.renderInspector(inspectorContainer, inspectorModel);
+		return mainContainer;
+	}
+
+	private renderShell(model: ReturnType<typeof buildAtlasShellModel>, inspectorModel: IAtlasInspectorModel | undefined): void {
 		if (!this.bodyContainer) {
 			return;
 		}
 
-		DOM.clearNode(this.bodyContainer);
+		const mainContainer = this.prepareBodyLayout(inspectorModel);
+		if (!mainContainer) {
+			return;
+		}
 
-		const root = DOM.append(this.bodyContainer, $('.atlas-center-shell-root'));
+		const root = DOM.append(mainContainer, $('.atlas-center-shell-root'));
 		const hero = DOM.append(root, $('.atlas-center-shell-hero'));
 		const title = DOM.append(hero, $('h1.atlas-center-shell-title'));
 		title.textContent = model.title;
@@ -162,14 +222,17 @@ export class AtlasCenterShellViewPane extends ViewPane {
 		}
 	}
 
-	private renderTasksWorkspace(model: ITaskWorkspaceModel): void {
+	private renderTasksWorkspace(model: ITaskWorkspaceModel, inspectorModel: IAtlasInspectorModel | undefined): void {
 		if (!this.bodyContainer) {
 			return;
 		}
 
-		DOM.clearNode(this.bodyContainer);
+		const mainContainer = this.prepareBodyLayout(inspectorModel);
+		if (!mainContainer) {
+			return;
+		}
 
-		const root = DOM.append(this.bodyContainer, $('.atlas-center-shell-root.atlas-center-shell-root-tasks'));
+		const root = DOM.append(mainContainer, $('.atlas-center-shell-root.atlas-center-shell-root-tasks'));
 		this.renderWorkspaceHero(root, model.title, model.subtitle, model.stats);
 
 		if (model.details.length > 0) {
@@ -233,14 +296,17 @@ export class AtlasCenterShellViewPane extends ViewPane {
 		}
 	}
 
-	private renderAgentsWorkspace(model: ReturnType<typeof buildAgentsWorkspaceModel>): void {
+	private renderAgentsWorkspace(model: ReturnType<typeof buildAgentsWorkspaceModel>, inspectorModel: IAtlasInspectorModel | undefined): void {
 		if (!this.bodyContainer) {
 			return;
 		}
 
-		DOM.clearNode(this.bodyContainer);
+		const mainContainer = this.prepareBodyLayout(inspectorModel);
+		if (!mainContainer) {
+			return;
+		}
 
-		const root = DOM.append(this.bodyContainer, $('.atlas-center-shell-root.atlas-center-shell-root-agents'));
+		const root = DOM.append(mainContainer, $('.atlas-center-shell-root.atlas-center-shell-root-agents'));
 		this.renderWorkspaceHero(root, model.title, model.subtitle, model.stats);
 
 		if (model.details.length > 0) {
@@ -310,12 +376,14 @@ export class AtlasCenterShellViewPane extends ViewPane {
 		}
 	}
 
-	private openWorkspaceLink(link: IAtlasWorkspaceLink): void {
-		if (link.kind === 'entity') {
-			this.fleetManagementService.selectEntity(link.target);
+	private openWorkspaceLink(link: IAtlasWorkspaceLink | IAtlasInspectorLink): void {
+		if (link.kind === 'section' && link.section) {
+			this.fleetManagementService.selectSection(link.section);
 			return;
 		}
-		this.fleetManagementService.selectSection(link.section);
+		if (link.kind === 'entity' && link.target) {
+			this.fleetManagementService.selectEntity(link.target);
+		}
 	}
 
 	private renderTaskSwarmCard(container: HTMLElement, cardModel: ITaskWorkspaceSwarmCard): void {
@@ -476,14 +544,17 @@ export class AtlasCenterShellViewPane extends ViewPane {
 		message.textContent = messageText;
 	}
 
-	private renderFleetCommand(model: ReturnType<typeof buildFleetCommandModel>): void {
+	private renderFleetCommand(model: ReturnType<typeof buildFleetCommandModel>, inspectorModel: IAtlasInspectorModel | undefined): void {
 		if (!this.bodyContainer) {
 			return;
 		}
 
-		DOM.clearNode(this.bodyContainer);
+		const mainContainer = this.prepareBodyLayout(inspectorModel);
+		if (!mainContainer) {
+			return;
+		}
 
-		const root = DOM.append(this.bodyContainer, $('.atlas-center-shell-root.atlas-center-shell-root-fleet'));
+		const root = DOM.append(mainContainer, $('.atlas-center-shell-root.atlas-center-shell-root-fleet'));
 		const hero = DOM.append(root, $('.atlas-center-shell-hero'));
 		const title = DOM.append(hero, $('h1.atlas-center-shell-title'));
 		title.textContent = model.title;
@@ -579,14 +650,17 @@ export class AtlasCenterShellViewPane extends ViewPane {
 		metaValue.textContent = value;
 	}
 
-	private renderReviewWorkspace(model: IReviewWorkspaceModel): void {
+	private renderReviewWorkspace(model: IReviewWorkspaceModel, inspectorModel: IAtlasInspectorModel | undefined): void {
 		if (!this.bodyContainer) {
 			return;
 		}
 
-		DOM.clearNode(this.bodyContainer);
+		const mainContainer = this.prepareBodyLayout(inspectorModel);
+		if (!mainContainer) {
+			return;
+		}
 
-		const root = DOM.append(this.bodyContainer, $('.atlas-center-shell-root.atlas-center-shell-root-review'));
+		const root = DOM.append(mainContainer, $('.atlas-center-shell-root.atlas-center-shell-root-review'));
 		const hero = DOM.append(root, $('.atlas-center-shell-hero'));
 		const title = DOM.append(hero, $('h1.atlas-center-shell-title'));
 		title.textContent = model.title;
@@ -706,6 +780,245 @@ export class AtlasCenterShellViewPane extends ViewPane {
 		const subtitle = DOM.append(button, $('div.atlas-review-workspace-entry-subtitle'));
 		subtitle.textContent = entry.subtitle;
 	}
+
+	private renderInspector(container: HTMLElement, model: IAtlasInspectorModel): void {
+		const root = DOM.append(container, $('section.atlas-center-shell-inspector'));
+		const header = DOM.append(root, $('div.atlas-center-shell-inspector-header'));
+		const title = DOM.append(header, $('h2.atlas-center-shell-inspector-title'));
+		title.textContent = model.title;
+		const subtitle = DOM.append(header, $('div.atlas-center-shell-inspector-subtitle'));
+		subtitle.textContent = model.subtitle;
+
+		const sections = DOM.append(root, $('div.atlas-center-shell-inspector-sections'));
+		this.renderInspectorOverview(sections, model);
+		this.renderInspectorWorktree(sections, model);
+		this.renderInspectorResult(sections, model);
+		this.renderInspectorArtifacts(sections, model);
+		this.renderInspectorMemory(sections, model);
+		this.renderInspectorActivity(sections, model);
+		this.renderInspectorTranscript(sections, model);
+		this.renderInspectorProvenance(sections, model);
+	}
+
+	private renderInspectorOverview(container: HTMLElement, model: IAtlasInspectorModel): void {
+		const section = this.renderInspectorSection(container, model.overview);
+		const details = DOM.append(section, $('div.atlas-inspector-overview-details'));
+		for (const item of model.overview.details) {
+			const card = DOM.append(details, $('div.atlas-inspector-detail'));
+			card.classList.add(attentionClass(item.attentionLevel));
+			const label = DOM.append(card, $('div.atlas-inspector-detail-label'));
+			label.textContent = item.label;
+			const value = DOM.append(card, $('div.atlas-inspector-detail-value'));
+			value.textContent = item.value;
+		}
+
+		if (model.overview.links.length > 0) {
+			const links = DOM.append(section, $('div.atlas-inspector-links'));
+			for (const link of model.overview.links) {
+				const button = DOM.append(links, $('button.atlas-inspector-link')) as HTMLButtonElement;
+				button.type = 'button';
+				button.textContent = link.label;
+				button.addEventListener('click', () => this.openWorkspaceLink(link));
+			}
+		}
+	}
+
+	private renderInspectorWorktree(container: HTMLElement, model: IAtlasInspectorModel): void {
+		this.renderInspectorSection(container, model.worktree, content => {
+			const list = DOM.append(content, $('div.atlas-inspector-card-list'));
+			for (const entry of model.worktree.entries) {
+				const card = DOM.append(list, $('article.atlas-inspector-card'));
+				card.classList.add(attentionClass(entry.attentionLevel));
+				const heading = DOM.append(card, $('div.atlas-inspector-card-heading'));
+				const title = DOM.append(heading, $('div.atlas-inspector-card-title'));
+				title.textContent = basename(entry.worktreePath) || entry.worktreePath;
+				const status = DOM.append(heading, $('div.atlas-inspector-card-status'));
+				status.textContent = entry.workingTreeClean === undefined ? 'unknown' : entry.workingTreeClean ? 'clean' : 'dirty';
+
+				const path = DOM.append(card, $('div.atlas-inspector-card-body'));
+				path.textContent = entry.worktreePath;
+
+				const meta = DOM.append(card, $('div.atlas-inspector-metadata'));
+				this.renderInspectorMeta(meta, 'Dispatch', entry.dispatchId);
+				this.renderInspectorMeta(meta, 'Task', entry.taskId);
+				this.renderInspectorMeta(meta, 'Branch', entry.branch ?? '—');
+				this.renderInspectorMeta(meta, 'Base', entry.baseRef ?? '—');
+				this.renderInspectorMeta(meta, 'Head', entry.headSha ?? '—');
+				this.renderInspectorMeta(meta, 'Merge ready', entry.mergeReady === undefined ? 'Unknown' : entry.mergeReady ? 'Yes' : 'No');
+			}
+		});
+	}
+
+	private renderInspectorResult(container: HTMLElement, model: IAtlasInspectorModel): void {
+		this.renderInspectorSection(container, model.result, content => {
+			if (!model.result.packet) {
+				return;
+			}
+
+			const summary = DOM.append(content, $('div.atlas-inspector-card-body'));
+			summary.textContent = model.result.packet.summary;
+
+			const meta = DOM.append(content, $('div.atlas-inspector-metadata'));
+			this.renderInspectorMeta(meta, 'Status', model.result.packet.status);
+			this.renderInspectorMeta(meta, 'Decision', model.result.packet.decision ?? '—');
+			this.renderInspectorMeta(meta, 'From role', model.result.packet.from_role);
+			this.renderInspectorMeta(meta, 'To role', model.result.packet.to_role);
+			this.renderInspectorMeta(meta, 'Branch', model.result.packet.git_branch ?? '—');
+			this.renderInspectorMeta(meta, 'Head', model.result.packet.head_sha ?? '—');
+			this.renderInspectorMeta(meta, 'Merge ready', model.result.packet.merge_ready ? 'Yes' : 'No');
+
+			this.renderInspectorStringList(content, 'Artifacts', model.result.packet.artifacts);
+			this.renderInspectorStringList(content, 'Commands', model.result.packet.commands);
+			this.renderInspectorStringList(content, 'Risks', model.result.packet.risks);
+			this.renderInspectorStringList(content, 'Next actions', model.result.packet.next_actions);
+			this.renderInspectorStringList(content, 'Workspace events', model.result.packet.workspace_events);
+		});
+	}
+
+	private renderInspectorArtifacts(container: HTMLElement, model: IAtlasInspectorModel): void {
+		this.renderInspectorSection(container, model.artifacts, content => {
+			const inventory = DOM.append(content, $('div.atlas-inspector-list'));
+			for (const artifact of model.artifacts.inventory) {
+				const row = DOM.append(inventory, $('div.atlas-inspector-list-row'));
+				const label = DOM.append(row, $('div.atlas-inspector-list-title'));
+				label.textContent = artifact.artifactPath;
+				const meta = DOM.append(row, $('div.atlas-inspector-list-subtitle'));
+				meta.textContent = `${artifact.kind} • ${formatByteCount(artifact.sizeBytes)}`;
+			}
+
+			if (model.artifacts.preview?.textPreview) {
+				const preview = DOM.append(content, $('div.atlas-inspector-preformatted'));
+				preview.textContent = model.artifacts.preview.textPreview;
+			}
+		});
+	}
+
+	private renderInspectorMemory(container: HTMLElement, model: IAtlasInspectorModel): void {
+		this.renderInspectorSection(container, model.memory, content => {
+			if (model.memory.scopeLabel) {
+				const scope = DOM.append(content, $('div.atlas-inspector-note'));
+				scope.textContent = model.memory.scopeLabel;
+			}
+
+			const list = DOM.append(content, $('div.atlas-inspector-list'));
+			for (const record of model.memory.records) {
+				const row = DOM.append(list, $('div.atlas-inspector-list-row'));
+				const title = DOM.append(row, $('div.atlas-inspector-list-title'));
+				title.textContent = record.summary;
+				const subtitle = DOM.append(row, $('div.atlas-inspector-list-subtitle'));
+				subtitle.textContent = `${record.memoryType} • ${record.scope} • ${record.lifecycle} • ${record.createdByRole} • ${record.createdAt}`;
+			}
+		});
+	}
+
+	private renderInspectorActivity(container: HTMLElement, model: IAtlasInspectorModel): void {
+		this.renderInspectorSection(container, model.activity, content => {
+			const list = DOM.append(content, $('div.atlas-inspector-list'));
+			for (const entry of model.activity.entries) {
+				const row = DOM.append(list, $('div.atlas-inspector-list-row'));
+				const title = DOM.append(row, $('div.atlas-inspector-list-title'));
+				title.textContent = entry.summary;
+				const subtitle = DOM.append(row, $('div.atlas-inspector-list-subtitle'));
+				subtitle.textContent = [
+					new Date(entry.timestamp).toLocaleString(),
+					entry.kind,
+					entry.tool,
+					entry.filePath,
+					entry.durationMs !== undefined ? `${entry.durationMs}ms` : undefined,
+				].filter(Boolean).join(' • ');
+			}
+		});
+	}
+
+	private renderInspectorTranscript(container: HTMLElement, model: IAtlasInspectorModel): void {
+		this.renderInspectorSection(container, model.transcript, content => {
+			if (!model.transcript.snapshot) {
+				return;
+			}
+
+			const meta = DOM.append(content, $('div.atlas-inspector-metadata'));
+			this.renderInspectorMeta(meta, 'Available', model.transcript.snapshot.available ? 'Yes' : 'No');
+			this.renderInspectorMeta(meta, 'Dispatch', model.transcript.snapshot.dispatchId);
+
+			if (model.transcript.snapshot.metadata !== undefined) {
+				const metadata = DOM.append(content, $('div.atlas-inspector-preformatted'));
+				metadata.textContent = JSON.stringify(model.transcript.snapshot.metadata, null, 2);
+			}
+
+			if (model.transcript.snapshot.excerptJsonl) {
+				const excerpt = DOM.append(content, $('div.atlas-inspector-preformatted'));
+				excerpt.textContent = model.transcript.snapshot.excerptJsonl;
+			}
+		});
+	}
+
+	private renderInspectorProvenance(container: HTMLElement, model: IAtlasInspectorModel): void {
+		this.renderInspectorSection(container, model.provenance, content => {
+			const list = DOM.append(content, $('div.atlas-inspector-list'));
+			for (const entry of model.provenance.entries) {
+				const row = DOM.append(list, $('div.atlas-inspector-list-row'));
+				const title = DOM.append(row, $('div.atlas-inspector-list-title'));
+				title.textContent = `${entry.method} • ${entry.outcome}`;
+				const subtitle = DOM.append(row, $('div.atlas-inspector-list-subtitle'));
+				subtitle.textContent = [entry.actor_role, entry.identity, entry.created_at, entry.rid].filter(Boolean).join(' • ');
+				if (entry.provenance !== undefined) {
+					const details = DOM.append(row, $('div.atlas-inspector-preformatted'));
+					details.textContent = JSON.stringify(entry.provenance, null, 2);
+				}
+			}
+		});
+	}
+
+	private renderInspectorSection<T extends { title: string; state: string; message: string | undefined }>(
+		container: HTMLElement,
+		sectionModel: T,
+		renderReady?: (content: HTMLElement) => void,
+	): HTMLElement {
+		const section = DOM.append(container, $('section.atlas-inspector-section'));
+		const header = DOM.append(section, $('div.atlas-inspector-section-header'));
+		const title = DOM.append(header, $('div.atlas-inspector-section-title'));
+		title.textContent = sectionModel.title;
+		const state = DOM.append(header, $('div.atlas-inspector-section-state'));
+		state.textContent = inspectorStateLabel(sectionModel.state);
+		state.classList.add(`atlas-inspector-section-state-${sectionModel.state}`);
+
+		const content = DOM.append(section, $('div.atlas-inspector-section-content'));
+		if (sectionModel.state !== 'ready') {
+			const message = DOM.append(content, $('div.atlas-inspector-section-empty'));
+			message.textContent = sectionModel.message ?? 'No data available.';
+			return content;
+		}
+
+		if (sectionModel.message) {
+			const note = DOM.append(content, $('div.atlas-inspector-note'));
+			note.textContent = sectionModel.message;
+		}
+		renderReady?.(content);
+		return content;
+	}
+
+	private renderInspectorMeta(container: HTMLElement, labelText: string, valueText: string): void {
+		const item = DOM.append(container, $('div.atlas-inspector-meta-item'));
+		const label = DOM.append(item, $('div.atlas-inspector-meta-label'));
+		label.textContent = labelText;
+		const value = DOM.append(item, $('div.atlas-inspector-meta-value'));
+		value.textContent = valueText;
+	}
+
+	private renderInspectorStringList(container: HTMLElement, labelText: string, values: readonly string[]): void {
+		if (values.length === 0) {
+			return;
+		}
+
+		const section = DOM.append(container, $('div.atlas-inspector-string-list'));
+		const label = DOM.append(section, $('div.atlas-inspector-meta-label'));
+		label.textContent = labelText;
+		const list = DOM.append(section, $('div.atlas-inspector-badges'));
+		for (const value of values) {
+			const badge = DOM.append(list, $('span.atlas-inspector-badge'));
+			badge.textContent = value;
+		}
+	}
 }
 
 function attentionClass(level: number | undefined): string {
@@ -721,4 +1034,27 @@ function attentionClass(level: number | undefined): string {
 		default:
 			return 'attention-idle';
 	}
+}
+
+function inspectorStateLabel(state: string): string {
+	switch (state) {
+		case 'loading':
+			return 'Loading';
+		case 'empty':
+			return 'Empty';
+		case 'error':
+			return 'Error';
+		default:
+			return 'Ready';
+	}
+}
+
+function formatByteCount(value: number): string {
+	if (value < 1024) {
+		return `${value} B`;
+	}
+	if (value < 1024 * 1024) {
+		return `${(value / 1024).toFixed(1)} KB`;
+	}
+	return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }

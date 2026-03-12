@@ -4,6 +4,12 @@
  *--------------------------------------------------------------------------------------------*/
 
 import type {
+	IAgentActivityGetParams,
+	IAgentActivityGetResult,
+	IArtifactGetParams,
+	IArtifactGetResult,
+	IArtifactListParams,
+	IArtifactListResult,
 	IControlDispatchParams,
 	IControlResult,
 	IDispatchSubmitParams,
@@ -21,6 +27,9 @@ import type {
 	IMergeListResult,
 	IMergeQueueRecord,
 	IMergeUpdateNotification,
+	IMemoryGetParams,
+	IMemoryListParams,
+	IMemoryListResult,
 	IObjectiveDetail,
 	IObjectiveGetParams,
 	IObjectiveListParams,
@@ -39,7 +48,11 @@ import type {
 	IReviewGetParams,
 	IReviewListParams,
 	IReviewListResult,
+	IReviewProvenanceListParams,
+	IReviewProvenanceListResult,
 	IReviewUpdateNotification,
+	IResultGetParams,
+	IResultGetResult,
 	ISubscribeParams,
 	ISubscriptionAck,
 	ITaskDetail,
@@ -47,8 +60,14 @@ import type {
 	ITaskListResult,
 	ITaskTreeParams,
 	ITaskTreeResult,
+	ITranscriptGetParams,
+	ITranscriptGetResult,
 	IUnsubscribeParams,
 	IUnsubscribeResult,
+	IWorktreeGetParams,
+	IWorktreeGetResult,
+	IWorktreeListParams,
+	IWorktreeListResult,
 	IWireWorkspaceEvent,
 } from './harnessTypes.js';
 
@@ -59,10 +78,13 @@ export const HARNESS_SCHEMA_VERSION = '2026-03-01';
 export type HarnessJsonRpcId = number | string | null;
 export type HarnessClientRequestId = number;
 
-// Public JSON-RPC surface on the current harness branch.
+// Atlas-adopted JSON-RPC surface on the current harness branch.
 export type HarnessDaemonRequestMethod =
 	| 'initialize'
 	| 'shutdown'
+	| 'artifact.list'
+	| 'artifact.get'
+	| 'agent.activity.get'
 	| 'control.pause'
 	| 'control.cancel'
 	| 'daemon.ping'
@@ -90,9 +112,16 @@ export type HarnessDaemonRequestMethod =
 	| 'merge.get'
 	| 'merge.subscribe'
 	| 'merge.unsubscribe'
+	| 'memory.get'
+	| 'memory.list'
+	| 'result.get'
+	| 'review.provenance.list'
 	| 'task.get'
 	| 'task.list'
-	| 'task.tree';
+	| 'task.tree'
+	| 'transcript.get'
+	| 'worktree.get'
+	| 'worktree.list';
 
 export type HarnessDaemonNotificationMethod =
 	| 'fleet.delta'
@@ -177,6 +206,9 @@ export type IHarnessJsonRpcMessage =
 export type HarnessRequestParams<TMethod extends HarnessDaemonRequestMethod> =
 	TMethod extends 'initialize' ? IHarnessInitializeParams :
 	TMethod extends 'shutdown' ? Record<string, never> :
+	TMethod extends 'artifact.list' ? IArtifactListParams :
+	TMethod extends 'artifact.get' ? IArtifactGetParams :
+	TMethod extends 'agent.activity.get' ? IAgentActivityGetParams :
 	TMethod extends 'control.pause' ? IControlDispatchParams :
 	TMethod extends 'control.cancel' ? IControlDispatchParams :
 	TMethod extends 'daemon.ping' ? Record<string, never> :
@@ -204,14 +236,24 @@ export type HarnessRequestParams<TMethod extends HarnessDaemonRequestMethod> =
 	TMethod extends 'merge.get' ? IMergeGetParams :
 	TMethod extends 'merge.subscribe' ? ISubscribeParams :
 	TMethod extends 'merge.unsubscribe' ? IUnsubscribeParams :
+	TMethod extends 'memory.get' ? IMemoryGetParams :
+	TMethod extends 'memory.list' ? IMemoryListParams :
+	TMethod extends 'result.get' ? IResultGetParams :
+	TMethod extends 'review.provenance.list' ? IReviewProvenanceListParams :
 	TMethod extends 'task.get' ? ITaskGetParams :
 	TMethod extends 'task.list' ? Record<string, never> :
 	TMethod extends 'task.tree' ? ITaskTreeParams :
+	TMethod extends 'transcript.get' ? ITranscriptGetParams :
+	TMethod extends 'worktree.get' ? IWorktreeGetParams :
+	TMethod extends 'worktree.list' ? IWorktreeListParams :
 	never;
 
 export type HarnessRequestResult<TMethod extends HarnessDaemonRequestMethod> =
 	TMethod extends 'initialize' ? IHarnessInitializeResult :
 	TMethod extends 'shutdown' ? Record<string, never> :
+	TMethod extends 'artifact.list' ? IArtifactListResult :
+	TMethod extends 'artifact.get' ? IArtifactGetResult :
+	TMethod extends 'agent.activity.get' ? IAgentActivityGetResult :
 	TMethod extends 'control.pause' ? IControlResult :
 	TMethod extends 'control.cancel' ? IControlResult :
 	TMethod extends 'daemon.ping' ? IPingResult :
@@ -239,9 +281,16 @@ export type HarnessRequestResult<TMethod extends HarnessDaemonRequestMethod> =
 	TMethod extends 'merge.get' ? IMergeQueueRecord :
 	TMethod extends 'merge.subscribe' ? ISubscriptionAck :
 	TMethod extends 'merge.unsubscribe' ? IUnsubscribeResult :
+	TMethod extends 'memory.get' ? AtlasModel.IWireMemoryRecord :
+	TMethod extends 'memory.list' ? IMemoryListResult :
+	TMethod extends 'result.get' ? IResultGetResult :
+	TMethod extends 'review.provenance.list' ? IReviewProvenanceListResult :
 	TMethod extends 'task.get' ? ITaskDetail :
 	TMethod extends 'task.list' ? ITaskListResult :
 	TMethod extends 'task.tree' ? ITaskTreeResult :
+	TMethod extends 'transcript.get' ? ITranscriptGetResult :
+	TMethod extends 'worktree.get' ? IWorktreeGetResult :
+	TMethod extends 'worktree.list' ? IWorktreeListResult :
 	never;
 
 export type HarnessNotificationParams<TMethod extends HarnessDaemonNotificationMethod> =

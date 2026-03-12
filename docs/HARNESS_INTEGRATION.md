@@ -56,7 +56,7 @@ Current merged daemon surface: the daemon now exposes these public methods:
 - `agent.activity.get`
 - `transcript.get`
 
-Wave D Atlas consumes the first five families plus `task.get` / `task.list` / `task.tree`, truthfully adopts the shipped daemon write subset (`control.pause`, `control.cancel`, `dispatch.submit`, `objective.submit`, `review.gate_verdict`, `review.authorize_promotion`, `review.enqueue_merge`), and still leaves newer daemon read families such as `task.subscribe`, `memory.get`, `memory.list`, `result.get`, `worktree.get`, `cost.get`, `agent.activity.get`, and `transcript.get` unconsumed for a later bridge wave. Atlas must still treat everything it does not currently map as unsupported in the product surface. Public daemon support still does not exist yet for `control.resume` or `control.steer`.
+Current merged Atlas consumes the first five families plus `task.get` / `task.list` / `task.tree`, truthfully adopts the shipped daemon write subset (`control.pause`, `control.cancel`, `dispatch.submit`, `objective.submit`, `review.gate_verdict`, `review.authorize_promotion`, `review.enqueue_merge`), and now also consumes the shipped inspector reads `artifact.list`, `artifact.get`, `memory.get`, `memory.list`, `result.get`, `review.provenance.list`, `agent.activity.get`, `transcript.get`, `worktree.get`, and `worktree.list`. Atlas still leaves `task.subscribe`, `task.unsubscribe`, the inspector subscribe/unsubscribe families, and `cost.get` unconsumed for a later bridge wave. Atlas must still treat everything it does not currently map as unsupported in the product surface. Public daemon support still does not exist yet for `control.resume` or `control.steer`.
 
 ### Fallback: Read-Only Polling
 
@@ -98,7 +98,7 @@ Atlas implements this as `IHarnessService` — a singleton service in `sessions/
 - daemon mode validates `initialize.fabric_identity` against the opened workspace and fails closed on cross-project mismatch
 - daemon mode populates fleet, health, objectives, review gates, merge queue, rooted task lineage, and derived swarms
 - polling mode remains intentionally narrow and read-only: it only populates fleet and derived health from SQLite
-- unsupported observables like advisory review queue, transcripts, memory, result packets, and worktree inspection remain explicit empty/default surfaces until the daemon exposes truthful read families for them
+- unsupported observables like advisory review queue and cost remain explicit empty/default surfaces until later bridge waves adopt them truthfully; the Phase 8 deep inspector now consumes worktree, result, artifact, memory, activity, transcript, and provenance reads on demand instead of exposing fake global observables
 
 ### Swarm Model
 

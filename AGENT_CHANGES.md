@@ -1,5 +1,87 @@
 # Agent Changes
 
+## Phase 8
+
+### What landed
+
+- Added the first real deep inspector surface inside the sessions window as a right-side region in the existing Atlas center shell.
+- Kept the work sessions-only and read-only:
+  - no titlebar work
+  - no multi-monitor work
+  - no new write paths
+- The inspector is selection-aware for:
+  - `Swarm`
+  - `Task`
+  - `Agent`
+  - `Review` targets with distinct `gate` vs `merge` identity
+
+### Inspector surface shipped
+
+- `Overview`
+- `Worktree`
+- `Result`
+- `Artifacts`
+- `Memory`
+- `Activity`
+- `Transcript`
+- `Provenance`
+
+Hard edges shipped:
+
+- no fake swarm-global activity or transcript replay
+- no fake rooted aggregate result browser
+- no binary artifact transport UI
+- provenance stays bounded to the selected review target and still distinguishes gate vs merge for the same dispatch
+- sparse/empty state is preferred over invented detail when the current selection lacks truthful scope
+
+### Bridge read adoption added
+
+Phase 8 extends Atlas bridge adoption for the already-shipped daemon read subset needed by the deep inspector:
+
+- `artifact.list`
+- `artifact.get`
+- `memory.get`
+- `memory.list`
+- `result.get`
+- `review.provenance.list`
+- `agent.activity.get`
+- `transcript.get`
+- `worktree.get`
+- `worktree.list`
+
+Atlas now exposes these through `IHarnessService` as on-demand read methods for the inspector surface. Polling mode and the browser stub remain sparse/read-only for these families.
+
+### Tests added or updated
+
+- `src/vs/sessions/contrib/atlasNavigation/test/node/atlasInspectorModel.test.ts`
+- `src/vs/sessions/services/harness/test/node/harnessService.test.ts`
+- `src/vs/sessions/services/harness/test/node/harnessTestUtils.ts`
+- compatibility updates in:
+  - `src/vs/sessions/services/fleet/test/node/fleetManagementService.test.ts`
+  - `src/vs/sessions/contrib/atlasNavigation/test/node/atlasReviewWorkspaceActions.test.ts`
+
+### Verification
+
+- `git diff --check`: passed
+- `node build/checker/layersChecker.ts`: passed
+- `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run compile-check-ts-native`: failed only on pre-existing unrelated noise in `src/vs/server/node/webClientServer.ts`
+  - `src/vs/server/node/webClientServer.ts(17,84)` `TS6133` `builtinExtensionsPath`
+  - `src/vs/server/node/webClientServer.ts(29,10)` `TS6133` `IExtensionManifest`
+- Focused harness node tests:
+  - `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run test-node -- --runGlob "vs/sessions/services/harness/test/node/*.test.js"`: passed (`33 passing`)
+- Focused atlas-navigation node tests:
+  - `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run test-node -- --runGlob "vs/sessions/contrib/atlasNavigation/test/node/*.test.js"`: passed (`25 passing`)
+- In this isolated worktree, the stock node runner needed a temporary shared `node_modules` symlink plus a temporary local `out/` overlay composed of the main repo baseline build and a narrow no-resolve transpile of the touched sessions files. Those temporary artifacts were removed after verification.
+
+### Intentionally unimplemented
+
+- Titlebar redesign
+- Multi-monitor work
+- Global cost adoption in the inspector
+- Swarm-global activity or transcript history beyond truthful dispatch/root scope
+- Binary artifact browsing or download UI
+- Any write controls from the inspector
+
 ## Phase 7A
 
 ### What landed

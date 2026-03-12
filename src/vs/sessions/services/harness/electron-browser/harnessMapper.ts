@@ -24,6 +24,8 @@ import type {
 	ITaskNode,
 	ITaskTreeNodeDetail,
 	ITaskTreeResult,
+	IWireAgentActivityEvent,
+	IWorktreeGetResult,
 } from '../common/harnessTypes.js';
 
 type AgentStatus = AtlasModel.IAgentState['status'];
@@ -350,6 +352,58 @@ export function toBridgeTaskTree(result: ITaskTreeResult): IHarnessTaskTree {
 		rootTaskId: result.root_task_id,
 		objectiveId: result.objective?.spec.objective_id,
 		nodes: Object.freeze(result.nodes.map(node => toBridgeTaskLineageNode(node))),
+	};
+}
+
+function normalizeOptionalString(value: string | null | undefined): string | undefined {
+	return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+export function toPresentationTranscriptEntries(events: readonly IWireAgentActivityEvent[]): readonly AtlasModel.ITranscriptEntry[] {
+	return Object.freeze(events.map(event => ({
+		timestamp: parseRequiredTimestamp(event.ts),
+		dispatchId: event.dispatch_id,
+		taskId: event.task_id,
+		objectiveId: normalizeOptionalString(event.objective_id),
+		roleId: event.role_id,
+		handoffType: event.handoff_type,
+		kind: event.kind,
+		summary: event.summary,
+		tool: normalizeOptionalString(event.tool),
+		filePath: normalizeOptionalString(event.file_path),
+		diffStat: event.diff_stat ? {
+			linesAdded: Math.max(0, event.diff_stat.lines_added),
+			linesRemoved: Math.max(0, event.diff_stat.lines_removed),
+		} : undefined,
+		command: normalizeOptionalString(event.command),
+		exitCode: typeof event.exit_code === 'number' ? event.exit_code : undefined,
+		durationMs: typeof event.duration_ms === 'number' ? event.duration_ms : undefined,
+		raw: event.raw,
+		payload: event.payload,
+	})));
+}
+
+export function toPresentationWorktreeState(worktree: IWorktreeGetResult): AtlasModel.IWorktreeState {
+	const workingTreeClean = typeof worktree.working_tree_clean === 'boolean' ? worktree.working_tree_clean : undefined;
+	const mergeReady = typeof worktree.merge_ready === 'boolean' ? worktree.merge_ready : undefined;
+	let attentionLevel = ATTENTION.idle;
+	if (workingTreeClean === false || mergeReady === false) {
+		attentionLevel = ATTENTION.needsAction;
+	}
+
+	return {
+		worktreePath: worktree.worktree_path,
+		dispatchId: worktree.dispatch_id,
+		taskId: worktree.task_id,
+		objectiveId: normalizeOptionalString(worktree.objective_id),
+		branch: normalizeOptionalString(worktree.branch),
+		baseRef: normalizeOptionalString(worktree.base_ref),
+		headSha: normalizeOptionalString(worktree.head_sha),
+		workingTreeClean,
+		mergeReady,
+		attentionLevel,
+		createdAt: parseOptionalTimestamp(worktree.created_at),
+		updatedAt: parseOptionalTimestamp(worktree.updated_at),
 	};
 }
 
