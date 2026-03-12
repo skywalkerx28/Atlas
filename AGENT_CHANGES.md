@@ -39,11 +39,11 @@
   - `planning` if all known tasks are queued
   - otherwise `executing`
 - Swarm attention is derived deterministically:
-  - `critical` for failures or merge-blocked state
-  - `needsAction` for review-needed, blocked tasks, blocked agents, or degraded pool health
-  - `completed` for completed swarms with no outstanding blockers
-  - `active` for running agents, queued/executing tasks, or merges in flight
-  - otherwise `idle`
+  - start from the highest child attention across tasks, agents, review gates, and merge entries
+  - raise to `critical` for task/objective failure or merge-blocked state
+  - raise to `needsAction` for review-needed, blocked tasks/agents, or degraded pool health
+  - return `completed` only when the swarm is completed and no higher attention applies
+  - otherwise keep an `active` floor for running agents, queued/executing tasks, or merges in flight, then fall back to `idle`
 
 ### Tests added or updated
 

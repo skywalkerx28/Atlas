@@ -45,6 +45,8 @@ const AGENT_STATUS = {
 	spawning: 'spawning' as AgentStatus,
 	running: 'running' as AgentStatus,
 	blocked: 'blocked' as AgentStatus,
+	failed: 'failed' as AgentStatus,
+	timedOut: 'timed_out' as AgentStatus,
 };
 
 const REVIEW_STATE = {
@@ -88,6 +90,7 @@ interface ISwarmDerivationContext {
 	readonly allTasksQueued: boolean;
 	readonly allLeafTasksCompleted: boolean;
 	readonly hasIncompleteTasks: boolean;
+	readonly highestChildAttention: AttentionLevel;
 }
 
 export function deriveSwarms(
@@ -295,6 +298,12 @@ function deriveSwarmContext(
 		&& task.status !== TASK_STATUS.failed
 		&& task.status !== TASK_STATUS.cancelled
 	);
+	const highestChildAttention = maxAttention([
+		...tasks.map(task => task.attentionLevel),
+		...agents.map(agent => agent.attentionLevel),
+		...reviewGates.map(reviewGate => reviewGate.attentionLevel),
+		...mergeEntries.map(mergeEntry => mergeEntry.attentionLevel),
+	]);
 
 	return {
 		hasFailures,
@@ -309,6 +318,7 @@ function deriveSwarmContext(
 		allTasksQueued,
 		allLeafTasksCompleted,
 		hasIncompleteTasks,
+		highestChildAttention,
 	};
 }
 
@@ -336,22 +346,24 @@ function deriveSwarmAttention(
 	phase: SwarmPhase,
 	health: AtlasModel.IHealthState,
 ): AttentionLevel {
+	let attention = context.highestChildAttention;
+
 	if (context.hasFailures || context.mergeBlocked) {
-		return ATTENTION.critical;
+		attention = Math.max(attention, ATTENTION.critical) as AttentionLevel;
 	}
 	if (context.reviewNeeded || context.hasBlockedTasks || context.hasBlockedAgents) {
-		return ATTENTION.needsAction;
-	}
-	if (phase === SWARM_PHASE.completed) {
-		return ATTENTION.completed;
+		attention = Math.max(attention, ATTENTION.needsAction) as AttentionLevel;
 	}
 	if (health.mode !== POOL_MODE.normal) {
-		return ATTENTION.needsAction;
+		attention = Math.max(attention, ATTENTION.needsAction) as AttentionLevel;
+	}
+	if (phase === SWARM_PHASE.completed && attention < ATTENTION.needsAction) {
+		return ATTENTION.completed;
 	}
 	if (context.hasActiveAgents || context.hasQueuedTasks || context.hasExecutingTasks || context.hasMergeInFlight) {
-		return ATTENTION.active;
+		attention = Math.max(attention, ATTENTION.active) as AttentionLevel;
 	}
-	return ATTENTION.idle;
+	return attention === ATTENTION.completed ? ATTENTION.idle : attention;
 }
 
 function collectLeafTaskIds(taskTree: IHarnessTaskTree): readonly string[] {
@@ -445,4 +457,12 @@ function uniqueDefined(values: readonly (string | undefined)[]): string[] {
 
 function compareNumbers(left: number, right: number): number {
 	return left - right;
+}
+
+function maxAttention(values: readonly AttentionLevel[]): AttentionLevel {
+	let max = ATTENTION.completed;
+	for (const value of values) {
+		max = Math.max(max, value) as AttentionLevel;
+	}
+	return max;
 }

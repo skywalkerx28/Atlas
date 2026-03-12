@@ -178,6 +178,44 @@ suite('HarnessSwarmDerivation', () => {
 		assert.strictEqual(planningObjectiveSwarm!.attentionLevel, 2);
 	});
 
+	test('surfaces failed child agent attention before task failure propagates', () => {
+		const swarms = deriveSwarms(
+			[
+				createTaskTree('TASK-ROOT-AGENT', undefined, [
+					createTaskTreeNode('TASK-ROOT-AGENT', undefined, 0),
+				]),
+			],
+			[
+				createTaskState({
+					taskId: 'TASK-ROOT-AGENT',
+					dispatchId: 'disp-agent-failed',
+					status: TaskStatus.Executing,
+					enqueuedAt: 100,
+					startedAt: 110,
+					attentionLevel: 2,
+				}),
+			],
+			Object.freeze([]),
+			createFleetState([
+				createAgentState({
+					dispatchId: 'disp-agent-failed',
+					taskId: 'TASK-ROOT-AGENT',
+					status: AgentStatus.Failed,
+					attentionLevel: 4,
+					lastHeartbeat: 150,
+				}),
+			]),
+			Object.freeze([]),
+			Object.freeze([]),
+			createHealthState(),
+		);
+
+		assert.strictEqual(swarms.length, 1);
+		assert.strictEqual(swarms[0].phase, 'executing');
+		assert.strictEqual(swarms[0].attentionLevel, 4);
+		assert.strictEqual(swarms[0].hasFailures, false);
+	});
+
 	test('propagates review-needed, merge-blocked, and failed summaries without inventing cross-swarm state', () => {
 		const swarms = deriveSwarms(
 			[
@@ -270,6 +308,36 @@ suite('HarnessSwarmDerivation', () => {
 		assert.strictEqual(failedSwarm!.phase, 'failed');
 		assert.strictEqual(failedSwarm!.hasFailures, true);
 		assert.strictEqual(failedSwarm!.attentionLevel, 4);
+	});
+
+	test('completed swarms still surface degraded pool health as needs action', () => {
+		const swarms = deriveSwarms(
+			[
+				createTaskTree('TASK-ROOT-COMPLETE', undefined, [
+					createTaskTreeNode('TASK-ROOT-COMPLETE', undefined, 0),
+				]),
+			],
+			[
+				createTaskState({
+					taskId: 'TASK-ROOT-COMPLETE',
+					status: TaskStatus.Completed,
+					enqueuedAt: 100,
+					completedAt: 120,
+					attentionLevel: 0,
+				}),
+			],
+			Object.freeze([]),
+			createFleetState(Object.freeze([])),
+			Object.freeze([]),
+			Object.freeze([]),
+			createHealthState({
+				mode: PoolMode.DiskPressure,
+			}),
+		);
+
+		assert.strictEqual(swarms.length, 1);
+		assert.strictEqual(swarms[0].phase, 'completed');
+		assert.strictEqual(swarms[0].attentionLevel, 3);
 	});
 
 	test('omits objective metadata on ambiguous linkage instead of guessing swarm identity', () => {
