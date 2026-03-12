@@ -58,6 +58,11 @@
 - Titlebar redesign, multi-monitor work, and later UI phases
 - Any write controls for `Tasks` or `Agents`
 
+### Follow-up hardening
+
+- The `Tasks` workspace now honors the Phase 3 objective-linkage hard edge instead of reattaching objective metadata from a raw `rootTaskId` match.
+- If swarm derivation intentionally omitted `objectiveId` because linkage was ambiguous or conflicting, the Phase 7A center shell now keeps that swarm ad-hoc rather than resurrecting an objective attachment on its own.
+
 ## Phase 6
 
 ### What landed

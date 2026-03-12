@@ -741,7 +741,7 @@ export function buildTasksWorkspaceModel(
 
 	const objective = selectedSwarm.objectiveId
 		? state.objectives.find(candidate => candidate.objectiveId === selectedSwarm.objectiveId)
-		: state.objectives.find(candidate => candidate.rootTaskId === selectedSwarm.rootTaskId);
+		: undefined;
 	const taskEntries = buildTaskWorkspaceTaskEntries(selectedSwarm, state.tasks, state.fleet.agents, state.reviewGates, state.mergeQueue, selectedTaskId);
 	const agentEntries = buildTaskWorkspaceAgentEntries(selectedSwarm, state.fleet.agents, now);
 	const pressureEntries = buildTaskWorkspacePressureEntries(selectedSwarm, state.reviewGates, state.mergeQueue);

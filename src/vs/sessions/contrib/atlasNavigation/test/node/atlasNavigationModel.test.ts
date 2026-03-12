@@ -650,6 +650,44 @@ suite('AtlasNavigationModel', () => {
 		assert.deepStrictEqual(model.links.map(link => link.label), ['Open Objective', 'Browse Agents', 'Browse Reviews', 'Open Fleet']);
 	});
 
+	test('keeps tasks workspace objective metadata omitted when swarm derivation left linkage ambiguous', () => {
+		const model = buildTasksWorkspaceModel(
+			{
+				section: NavigationSection.Tasks,
+				entity: { kind: EntityKind.Swarm, id: 'TASK-ROOT-1' },
+			},
+			createAtlasStateSnapshot({
+				swarms: [
+					createSwarmState({
+						swarmId: 'TASK-ROOT-1',
+						rootTaskId: 'TASK-ROOT-1',
+						objectiveId: undefined,
+						objectiveProblemStatement: undefined,
+						taskIds: Object.freeze(['TASK-ROOT-1']),
+					}),
+				],
+				tasks: [
+					createTaskState({
+						taskId: 'TASK-ROOT-1',
+						dispatchId: 'disp-root',
+						summary: 'Root planner task',
+					}),
+				],
+				objectives: [
+					createObjectiveState({
+						objectiveId: 'OBJ-AMBIGUOUS',
+						rootTaskId: 'TASK-ROOT-1',
+						problemStatement: 'Ambiguous objective that derivation intentionally omitted',
+					}),
+				],
+			}),
+		);
+
+		assert.strictEqual(model.title, 'TASK-ROOT-1');
+		assert.ok(model.details.some(detail => detail.label === 'Objective' && detail.value === 'Ad-hoc root task'));
+		assert.deepStrictEqual(model.links.map(link => link.label), ['Browse Agents', 'Browse Reviews', 'Open Fleet']);
+	});
+
 	test('builds a substantive agents overview with deterministic execution groups', () => {
 		const now = 900_000;
 		const state = createAtlasStateSnapshot({
