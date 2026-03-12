@@ -65,5 +65,6 @@ declare global {
 		type IWireMemoryRecord = import('./wire.js').IWireMemoryRecord;
 		type IWireResultPacket = import('./wire.js').IWireResultPacket;
 		type IWireTaskPacket = import('./wire.js').IWireTaskPacket;
+		type IWireWorkspaceEvent = import('./wire.js').IWireWorkspaceEvent;
 	}
 }

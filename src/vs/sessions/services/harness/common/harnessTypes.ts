@@ -7,8 +7,17 @@ export type IWireDispatchCommand = AtlasModel.IWireDispatchCommand;
 export type IWireMemoryRecord = AtlasModel.IWireMemoryRecord;
 export type IWireResultPacket = AtlasModel.IWireResultPacket;
 export type IWireTaskPacket = AtlasModel.IWireTaskPacket;
+export type IWireWorkspaceEvent = AtlasModel.IWireWorkspaceEvent;
 
-export type HarnessCapability = 'read' | 'control' | 'steer' | 'dispatch' | 'event';
+export type HarnessCapability = 'read' | 'control' | 'steer' | 'dispatch' | 'event' | 'review' | 'merge';
+export type HarnessSupportedWriteMethod =
+	| 'control.pause'
+	| 'control.cancel'
+	| 'dispatch.submit'
+	| 'objective.submit'
+	| 'review.gate_verdict'
+	| 'review.authorize_promotion'
+	| 'review.enqueue_merge';
 export type HarnessHandoffType =
 	| 'intake'
 	| 'planning'
@@ -257,6 +266,29 @@ export interface IObjectiveGetParams {
 	readonly objective_id: string;
 }
 
+export interface IObjectiveSubmitParams {
+	readonly summary: string;
+	readonly priority?: HarnessTaskPriority;
+	readonly context_paths: readonly string[];
+	readonly playbooks: readonly string[];
+	readonly desired_outcomes: readonly string[];
+	readonly constraints: readonly string[];
+	readonly success_criteria: readonly string[];
+	readonly operator_notes: readonly string[];
+	readonly budget_ceiling_usd?: number;
+	readonly max_parallel_workers?: number;
+}
+
+export interface IObjectiveSubmitResult {
+	readonly rid: string;
+	readonly objective_id: string;
+	readonly root_task_id: string;
+	readonly dispatch_id: string;
+	readonly idempotency_key: string;
+	readonly objective_path: string;
+	readonly packet_path: string;
+}
+
 export interface ITaskNode {
 	readonly task_id: string;
 	readonly parent_task_id: string | null;
@@ -347,6 +379,31 @@ export interface IReviewGetParams {
 	readonly dispatch_id: string;
 }
 
+export interface IReviewGateVerdictParams {
+	readonly dispatch_id: string;
+	readonly decision: HarnessReviewDecision;
+	readonly reviewed_by_role: string;
+}
+
+export interface IReviewAuthorizePromotionParams {
+	readonly dispatch_id: string;
+	readonly authorized_by_role: string;
+}
+
+export interface IReviewGateVerdictResult {
+	readonly rid: string;
+	readonly dispatch_id: string;
+	readonly applied: boolean;
+	readonly review: IReviewCandidateRecord;
+}
+
+export interface IReviewAuthorizePromotionResult {
+	readonly rid: string;
+	readonly dispatch_id: string;
+	readonly applied: boolean;
+	readonly review: IReviewCandidateRecord;
+}
+
 export interface IReviewDelta {
 	readonly added: readonly IReviewCandidateRecord[];
 	readonly changed: readonly IReviewCandidateRecord[];
@@ -402,6 +459,17 @@ export interface IMergeGetParams {
 	readonly dispatch_id: string;
 }
 
+export interface IReviewEnqueueMergeParams {
+	readonly dispatch_id: string;
+}
+
+export interface IReviewEnqueueMergeResult {
+	readonly rid: string;
+	readonly dispatch_id: string;
+	readonly inserted: boolean;
+	readonly entry: IMergeQueueRecord;
+}
+
 export interface IMergeDelta {
 	readonly added: readonly IMergeQueueRecord[];
 	readonly changed: readonly IMergeQueueRecord[];
@@ -417,7 +485,7 @@ export interface ITaskGetParams {
 	readonly task_id: string;
 }
 
-export interface ITaskListParams {}
+export interface ITaskListParams { }
 
 export interface ITaskTreeParams {
 	readonly root_task_id: string;
@@ -451,6 +519,42 @@ export interface ITaskDetail {
 	readonly latest_dispatch?: IQueueDispatch;
 	readonly subtasks: readonly ITaskNode[];
 	readonly latest_dispatch_timeline: readonly IDispatchTransition[];
+}
+
+export interface IControlDispatchParams {
+	readonly dispatch_id: string;
+}
+
+export interface IControlResult {
+	readonly rid: string;
+	readonly action_id: number;
+	readonly action: string;
+	readonly delegated_action: string;
+	readonly dispatch_id?: string;
+	readonly semantics: string;
+}
+
+export interface IDispatchSubmitParams {
+	readonly role_id: string;
+	readonly task_id: string;
+	readonly packet_path: string;
+	readonly priority?: HarnessTaskPriority;
+	readonly metadata?: Readonly<Record<string, unknown>>;
+}
+
+export interface IDispatchSubmitResult {
+	readonly rid: string;
+	readonly dispatch_id: string;
+	readonly idempotency_key: string;
+	readonly task_id: string;
+	readonly role_id: string;
+	readonly inserted: boolean;
+	readonly packet_path: string;
+}
+
+export interface IEventEmitResult {
+	readonly rid: string;
+	readonly event_id: string;
 }
 
 export interface IHarnessTaskLineageNode {

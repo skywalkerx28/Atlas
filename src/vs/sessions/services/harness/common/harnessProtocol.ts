@@ -4,7 +4,12 @@
  *--------------------------------------------------------------------------------------------*/
 
 import type {
+	IControlDispatchParams,
+	IControlResult,
+	IDispatchSubmitParams,
+	IDispatchSubmitResult,
 	IDaemonResyncRequiredNotification,
+	IEventEmitResult,
 	IFleetDeltaNotification,
 	IFleetSnapshotResult,
 	IHealthResult,
@@ -20,9 +25,17 @@ import type {
 	IObjectiveGetParams,
 	IObjectiveListParams,
 	IObjectiveListResult,
+	IObjectiveSubmitParams,
+	IObjectiveSubmitResult,
 	IObjectiveUpdateNotification,
 	IPingResult,
 	IReviewCandidateRecord,
+	IReviewAuthorizePromotionParams,
+	IReviewAuthorizePromotionResult,
+	IReviewEnqueueMergeParams,
+	IReviewEnqueueMergeResult,
+	IReviewGateVerdictParams,
+	IReviewGateVerdictResult,
 	IReviewGetParams,
 	IReviewListParams,
 	IReviewListResult,
@@ -36,6 +49,7 @@ import type {
 	ITaskTreeResult,
 	IUnsubscribeParams,
 	IUnsubscribeResult,
+	IWireWorkspaceEvent,
 } from './harnessTypes.js';
 
 export const HARNESS_JSONRPC_VERSION = '2.0';
@@ -49,7 +63,11 @@ export type HarnessClientRequestId = number;
 export type HarnessDaemonRequestMethod =
 	| 'initialize'
 	| 'shutdown'
+	| 'control.pause'
+	| 'control.cancel'
 	| 'daemon.ping'
+	| 'dispatch.submit'
+	| 'event.emit'
 	| 'fleet.snapshot'
 	| 'fleet.subscribe'
 	| 'fleet.unsubscribe'
@@ -58,8 +76,12 @@ export type HarnessDaemonRequestMethod =
 	| 'health.unsubscribe'
 	| 'objective.list'
 	| 'objective.get'
+	| 'objective.submit'
 	| 'objective.subscribe'
 	| 'objective.unsubscribe'
+	| 'review.gate_verdict'
+	| 'review.authorize_promotion'
+	| 'review.enqueue_merge'
 	| 'review.list'
 	| 'review.get'
 	| 'review.subscribe'
@@ -155,7 +177,11 @@ export type IHarnessJsonRpcMessage =
 export type HarnessRequestParams<TMethod extends HarnessDaemonRequestMethod> =
 	TMethod extends 'initialize' ? IHarnessInitializeParams :
 	TMethod extends 'shutdown' ? Record<string, never> :
+	TMethod extends 'control.pause' ? IControlDispatchParams :
+	TMethod extends 'control.cancel' ? IControlDispatchParams :
 	TMethod extends 'daemon.ping' ? Record<string, never> :
+	TMethod extends 'dispatch.submit' ? IDispatchSubmitParams :
+	TMethod extends 'event.emit' ? IWireWorkspaceEvent :
 	TMethod extends 'fleet.snapshot' ? Record<string, never> :
 	TMethod extends 'fleet.subscribe' ? ISubscribeParams :
 	TMethod extends 'fleet.unsubscribe' ? IUnsubscribeParams :
@@ -164,8 +190,12 @@ export type HarnessRequestParams<TMethod extends HarnessDaemonRequestMethod> =
 	TMethod extends 'health.unsubscribe' ? IUnsubscribeParams :
 	TMethod extends 'objective.list' ? IObjectiveListParams :
 	TMethod extends 'objective.get' ? IObjectiveGetParams :
+	TMethod extends 'objective.submit' ? IObjectiveSubmitParams :
 	TMethod extends 'objective.subscribe' ? ISubscribeParams :
 	TMethod extends 'objective.unsubscribe' ? IUnsubscribeParams :
+	TMethod extends 'review.gate_verdict' ? IReviewGateVerdictParams :
+	TMethod extends 'review.authorize_promotion' ? IReviewAuthorizePromotionParams :
+	TMethod extends 'review.enqueue_merge' ? IReviewEnqueueMergeParams :
 	TMethod extends 'review.list' ? IReviewListParams :
 	TMethod extends 'review.get' ? IReviewGetParams :
 	TMethod extends 'review.subscribe' ? ISubscribeParams :
@@ -182,7 +212,11 @@ export type HarnessRequestParams<TMethod extends HarnessDaemonRequestMethod> =
 export type HarnessRequestResult<TMethod extends HarnessDaemonRequestMethod> =
 	TMethod extends 'initialize' ? IHarnessInitializeResult :
 	TMethod extends 'shutdown' ? Record<string, never> :
+	TMethod extends 'control.pause' ? IControlResult :
+	TMethod extends 'control.cancel' ? IControlResult :
 	TMethod extends 'daemon.ping' ? IPingResult :
+	TMethod extends 'dispatch.submit' ? IDispatchSubmitResult :
+	TMethod extends 'event.emit' ? IEventEmitResult :
 	TMethod extends 'fleet.snapshot' ? IFleetSnapshotResult :
 	TMethod extends 'fleet.subscribe' ? ISubscriptionAck :
 	TMethod extends 'fleet.unsubscribe' ? IUnsubscribeResult :
@@ -191,8 +225,12 @@ export type HarnessRequestResult<TMethod extends HarnessDaemonRequestMethod> =
 	TMethod extends 'health.unsubscribe' ? IUnsubscribeResult :
 	TMethod extends 'objective.list' ? IObjectiveListResult :
 	TMethod extends 'objective.get' ? IObjectiveDetail :
+	TMethod extends 'objective.submit' ? IObjectiveSubmitResult :
 	TMethod extends 'objective.subscribe' ? ISubscriptionAck :
 	TMethod extends 'objective.unsubscribe' ? IUnsubscribeResult :
+	TMethod extends 'review.gate_verdict' ? IReviewGateVerdictResult :
+	TMethod extends 'review.authorize_promotion' ? IReviewAuthorizePromotionResult :
+	TMethod extends 'review.enqueue_merge' ? IReviewEnqueueMergeResult :
 	TMethod extends 'review.list' ? IReviewListResult :
 	TMethod extends 'review.get' ? IReviewCandidateRecord :
 	TMethod extends 'review.subscribe' ? ISubscriptionAck :

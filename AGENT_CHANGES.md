@@ -1,5 +1,56 @@
 # Agent Changes
 
+## Phase 2 Wave D
+
+### What landed
+
+- Adopted the shipped harness daemon write subset in the Atlas desktop bridge instead of keeping all write methods fail-closed.
+- `IHarnessConnectionInfo` now reports:
+  - coarse `writesEnabled` for "some daemon writes are available"
+  - exact `supportedWriteMethods` for per-method truth
+- Desktop daemon mode now delegates the shipped subset end-to-end through the daemon:
+  - `control.pause`
+  - `control.cancel`
+  - `dispatch.submit`
+  - `objective.submit`
+  - `review.gate_verdict`
+  - `review.authorize_promotion`
+  - `review.enqueue_merge`
+- Polling mode and the browser stub remain read-only with `writesEnabled: false` and `supportedWriteMethods: []`.
+- `submitDispatch()` now materializes a deterministic repo-local task packet under `.codex/atlas-dispatch-packets/` because the daemon truthfully accepts validated packet files, not an in-memory logical command object.
+
+### Still intentionally unsupported
+
+- `resumeAgent()` -> `control.resume`
+- `steerAgent()` -> `control.steer`
+- `pauseAll()`
+- `resumeAll()`
+- Any CLI subprocess write fallback
+- Any direct SQLite write path
+- Any public `event.emit` caller path in `IHarnessService`
+
+### Contract notes
+
+- Atlas `IWireDispatchCommand.task_id` is still optional at the model layer, but daemon-backed `dispatch.submit` currently requires it. The service now rejects missing `task_id` fail-closed.
+- Atlas `skip_gates` exists on the logical dispatch command, but the current daemon `dispatch.submit` surface does not honor it. The service rejects `skip_gates: true` fail-closed instead of pretending it worked.
+- `event.emit` is now typed in the protocol/client surface because the daemon ships it, but Atlas still has no truthful bridge caller for it in this wave.
+
+### Tests added or updated
+
+- `src/vs/sessions/services/harness/test/node/harnessService.test.ts`
+- `src/vs/sessions/services/harness/test/node/harnessTestUtils.ts`
+- `src/vs/sessions/services/fleet/test/node/fleetManagementService.test.ts`
+- `src/vs/sessions/contrib/atlasNavigation/test/node/atlasNavigationModel.test.ts`
+
+### Verification
+
+- `git diff --check`: passed
+- `node build/checker/layersChecker.ts`: passed
+- `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run compile-check-ts-native`: failed only on pre-existing unrelated noise in `src/vs/server/node/webClientServer.ts`
+  - `src/vs/server/node/webClientServer.ts(17,84)` `TS6133` `builtinExtensionsPath`
+  - `src/vs/server/node/webClientServer.ts(29,10)` `TS6133` `IExtensionManifest`
+- `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run test-node -- --runGlob "vs/sessions/services/harness/test/node/*.test.js"`: passed (`29 passing`)
+
 ## Phase 5
 
 ### What landed

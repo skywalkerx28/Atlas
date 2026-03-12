@@ -50,6 +50,7 @@ const DISCONNECTED_STATE = constObservable<IHarnessConnectionInfo>({
 	state: HarnessConnectionState.Disconnected,
 	mode: 'none',
 	writesEnabled: false,
+	supportedWriteMethods: Object.freeze([]),
 	daemonVersion: undefined,
 	schemaVersion: undefined,
 	grantedCapabilities: Object.freeze([]),

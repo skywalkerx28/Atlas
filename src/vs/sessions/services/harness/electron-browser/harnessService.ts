@@ -3,13 +3,15 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+// eslint-disable-next-line local/code-import-patterns -- Electron-only bridge persists daemon-backed dispatch packets inside the served repo.
+import { createHash } from 'crypto';
 // eslint-disable-next-line local/code-import-patterns -- Electron-only bridge reads the daemon token and fallback DB metadata from disk.
 import * as fs from 'fs/promises';
 import { isEqualOrParent as isEqualOrParentPath } from '../../../../base/common/extpath.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.js';
 import { constObservable, IObservable, observableValue } from '../../../../base/common/observable.js';
-import { join } from '../../../../base/common/path.js';
+import { join, relative as relativePath } from '../../../../base/common/path.js';
 import { env } from '../../../../base/common/process.js';
 import { isEqualOrParent } from '../../../../base/common/resources.js';
 import { URI } from '../../../../base/common/uri.js';
@@ -21,6 +23,8 @@ import { HarnessConnectionState, IHarnessConnectionInfo, IHarnessService } from 
 import { type IHarnessDaemonNotification, HARNESS_PROTOCOL_VERSION } from '../common/harnessProtocol.js';
 import type {
 	IFleetDeltaNotification,
+	HarnessCapability,
+	HarnessSupportedWriteMethod,
 	IHarnessFabricIdentity,
 	IHarnessTaskTree,
 	IHealthUpdateNotification,
@@ -61,6 +65,7 @@ import { deriveSwarms } from './harnessSwarmDerivation.js';
 import { HarnessSqlitePoller } from './harnessSqlitePoller.js';
 
 const DAEMON_REQUIRED_ERROR = 'Harness daemon required; Atlas is in read-only mode.';
+const DEFAULT_DISPATCH_FROM_ROLE = 'axiom-planner';
 const FRONTIER_ENV_FILE_PATH = '/etc/syntropic/frontier-runner.env';
 const ACTIVE_VALIDATION_RECENCY_MS = 900_000;
 const EMPTY_TRANSCRIPTS = constObservable(Object.freeze([]) as readonly AtlasModel.ITranscriptEntry[]);
@@ -70,6 +75,34 @@ const EMPTY_TASKS = Object.freeze([]) as readonly AtlasModel.ITaskState[];
 const EMPTY_REVIEWS = Object.freeze([]) as readonly AtlasModel.IAdvisoryReviewEntry[];
 const EMPTY_GATES = Object.freeze([]) as readonly AtlasModel.IReviewGateState[];
 const EMPTY_MERGES = Object.freeze([]) as readonly AtlasModel.IMergeEntry[];
+const EMPTY_SUPPORTED_WRITE_METHODS = Object.freeze([]) as readonly HarnessSupportedWriteMethod[];
+const ATLAS_REQUESTED_DAEMON_CAPABILITIES = Object.freeze([
+	'read',
+	'control',
+	'dispatch',
+	'event',
+	'review',
+	'merge',
+] as const satisfies readonly HarnessCapability[]);
+const ATLAS_SUPPORTED_WRITE_METHODS = Object.freeze([
+	'control.pause',
+	'control.cancel',
+	'dispatch.submit',
+	'objective.submit',
+	'review.gate_verdict',
+	'review.authorize_promotion',
+	'review.enqueue_merge',
+] as const satisfies readonly HarnessSupportedWriteMethod[]);
+
+const REQUIRED_CAPABILITY_BY_WRITE_METHOD: Readonly<Record<HarnessSupportedWriteMethod, HarnessCapability>> = Object.freeze({
+	'control.pause': 'control',
+	'control.cancel': 'control',
+	'dispatch.submit': 'dispatch',
+	'objective.submit': 'dispatch',
+	'review.gate_verdict': 'review',
+	'review.authorize_promotion': 'merge',
+	'review.enqueue_merge': 'merge',
+});
 
 type HarnessSubscriptionTopic = 'fleet' | 'health' | 'objective' | 'review' | 'merge';
 
@@ -133,6 +166,7 @@ export class HarnessService extends Disposable implements IHarnessService {
 			state: HarnessConnectionState.Connecting,
 			mode: 'none',
 			writesEnabled: false,
+			supportedWriteMethods: EMPTY_SUPPORTED_WRITE_METHODS,
 			daemonVersion: undefined,
 			schemaVersion: undefined,
 			grantedCapabilities: Object.freeze([]),
@@ -151,6 +185,7 @@ export class HarnessService extends Disposable implements IHarnessService {
 					state: HarnessConnectionState.Error,
 					mode: 'none',
 					writesEnabled: false,
+					supportedWriteMethods: EMPTY_SUPPORTED_WRITE_METHODS,
 					daemonVersion: undefined,
 					schemaVersion: undefined,
 					grantedCapabilities: Object.freeze([]),
@@ -170,6 +205,7 @@ export class HarnessService extends Disposable implements IHarnessService {
 					state: HarnessConnectionState.Error,
 					mode: 'none',
 					writesEnabled: false,
+					supportedWriteMethods: EMPTY_SUPPORTED_WRITE_METHODS,
 					daemonVersion: undefined,
 					schemaVersion: undefined,
 					grantedCapabilities: Object.freeze([]),
@@ -309,48 +345,106 @@ export class HarnessService extends Disposable implements IHarnessService {
 		return undefined;
 	}
 
-	async pauseAgent(_dispatchId: string): Promise<void> {
-		this.failClosedWrite('control methods');
+	async pauseAgent(dispatchId: string): Promise<void> {
+		const client = this.requireSupportedWriteMethod('control.pause');
+		await client.request('control.pause', { dispatch_id: dispatchId });
 	}
 
 	async resumeAgent(_dispatchId: string): Promise<void> {
-		this.failClosedWrite('control methods');
+		this.failUnsupportedWrite('control.resume');
 	}
 
-	async cancelAgent(_dispatchId: string): Promise<void> {
-		this.failClosedWrite('control methods');
+	async cancelAgent(dispatchId: string): Promise<void> {
+		const client = this.requireSupportedWriteMethod('control.cancel');
+		await client.request('control.cancel', { dispatch_id: dispatchId });
 	}
 
 	async steerAgent(_dispatchId: string, _message: string): Promise<void> {
-		this.failClosedWrite('steer methods');
+		this.failUnsupportedWrite('control.steer');
 	}
 
 	async pauseAll(): Promise<void> {
-		this.failClosedWrite('control methods');
+		this.failUnsupportedWrite('pauseAll');
 	}
 
 	async resumeAll(): Promise<void> {
-		this.failClosedWrite('control methods');
+		this.failUnsupportedWrite('resumeAll');
 	}
 
-	async submitObjective(_problemStatement: string, _options?: AtlasModel.IObjectiveSubmitOptions): Promise<string> {
-		this.failClosedWrite('objective methods');
+	async submitObjective(problemStatement: string, options?: AtlasModel.IObjectiveSubmitOptions): Promise<string> {
+		const client = this.requireSupportedWriteMethod('objective.submit');
+		const result = await client.request('objective.submit', {
+			summary: requireNonEmpty(problemStatement, 'Atlas objective submission requires a non-empty problem statement.'),
+			priority: options?.priority as 'p0' | 'p1' | 'p2' | 'p3' | 'info' | undefined,
+			context_paths: [...(options?.contextPaths ?? [])],
+			playbooks: [...(options?.playbookIds ?? [])],
+			desired_outcomes: [...(options?.desiredOutcomes ?? [])],
+			constraints: [...(options?.constraints ?? [])],
+			success_criteria: [...(options?.successCriteria ?? [])],
+			operator_notes: [...(options?.operatorNotes ?? [])],
+			budget_ceiling_usd: options?.budgetCeilingUsd,
+			max_parallel_workers: options?.maxParallelWorkers,
+		});
+		void this.refreshObjectiveSubmitState(client, result);
+		return result.objective_id;
 	}
 
-	async submitDispatch(_command: AtlasModel.IWireDispatchCommand): Promise<string> {
-		this.failClosedWrite('dispatch methods');
+	async submitDispatch(command: AtlasModel.IWireDispatchCommand): Promise<string> {
+		const client = this.requireSupportedWriteMethod('dispatch.submit');
+		const taskId = normalizeOptionalString(command.task_id);
+		if (!taskId) {
+			throw new Error('Current harness daemon dispatch.submit requires command.task_id.');
+		}
+		if (command.skip_gates) {
+			throw new Error('Current harness daemon dispatch.submit does not honor skip_gates requests.');
+		}
+
+		const packetPath = await this.materializeDispatchPacket(client, taskId, command);
+		const result = await client.request('dispatch.submit', {
+			role_id: requireNonEmpty(command.role_id, 'Atlas dispatch submission requires a non-empty role_id.'),
+			task_id: taskId,
+			packet_path: packetPath,
+			metadata: {
+				source: 'atlas-ide',
+				operator_message: requireNonEmpty(command.message, 'Atlas dispatch submission requires a non-empty message.'),
+				from_role: normalizeOptionalString(command.from_role) ?? DEFAULT_DISPATCH_FROM_ROLE,
+				subagent_nickname: normalizeOptionalString(command.subagent_nickname) ?? null,
+				skip_gates: false,
+			},
+		});
+		void this.refreshDispatchSubmitState(client, result.task_id);
+		return result.dispatch_id;
 	}
 
-	async recordGateVerdict(_dispatchId: string, _decision: AtlasModel.ReviewDecision, _reviewedByRole: string): Promise<void> {
-		this.failClosedWrite('review methods');
+	async recordGateVerdict(dispatchId: string, decision: AtlasModel.ReviewDecision, reviewedByRole: string): Promise<void> {
+		if (decision === 'n/a') {
+			throw new Error('Current harness daemon review.gate_verdict does not accept decision \'n/a\'.');
+		}
+		const client = this.requireSupportedWriteMethod('review.gate_verdict');
+		const result = await client.request('review.gate_verdict', {
+			dispatch_id: dispatchId,
+			decision: decision as 'go' | 'no-go' | 'n/a',
+			reviewed_by_role: reviewedByRole,
+		});
+		this.reviewRecords = upsertByDispatchId(this.reviewRecords, result.review);
+		this.publishReviewState();
 	}
 
-	async authorizePromotion(_dispatchId: string, _authorizedByRole: string): Promise<void> {
-		this.failClosedWrite('promotion methods');
+	async authorizePromotion(dispatchId: string, authorizedByRole: string): Promise<void> {
+		const client = this.requireSupportedWriteMethod('review.authorize_promotion');
+		const result = await client.request('review.authorize_promotion', {
+			dispatch_id: dispatchId,
+			authorized_by_role: authorizedByRole,
+		});
+		this.reviewRecords = upsertByDispatchId(this.reviewRecords, result.review);
+		this.publishReviewState();
 	}
 
-	async enqueueForMerge(_dispatchId: string): Promise<void> {
-		this.failClosedWrite('merge methods');
+	async enqueueForMerge(dispatchId: string): Promise<void> {
+		const client = this.requireSupportedWriteMethod('review.enqueue_merge');
+		const result = await client.request('review.enqueue_merge', { dispatch_id: dispatchId });
+		this.mergeRecords = upsertByDispatchId(this.mergeRecords, result.entry);
+		this.publishMergeState();
 	}
 
 	subscribeAgentActivity(_dispatchId: string): IObservable<readonly AtlasModel.ITranscriptEntry[]> {
@@ -386,9 +480,10 @@ export class HarnessService extends Disposable implements IHarnessService {
 					version: this.productService.version,
 				},
 				client_token: token,
-				requested_capabilities: Object.freeze(['read']),
+				requested_capabilities: ATLAS_REQUESTED_DAEMON_CAPABILITIES,
 			});
 			await this.validateWorkspaceAffinity(workspaceRoot, initializeResult.fabric_identity);
+			const supportedWriteMethods = supportedWriteMethodsFromInitialize(initializeResult);
 
 			this.daemonClient = client;
 			this.validatedPollingDbPath = initializeResult.fabric_identity.db_path;
@@ -450,7 +545,8 @@ export class HarnessService extends Disposable implements IHarnessService {
 			this.setConnectionState({
 				state: HarnessConnectionState.Connected,
 				mode: 'daemon',
-				writesEnabled: false,
+				writesEnabled: supportedWriteMethods.length > 0,
+				supportedWriteMethods,
 				daemonVersion: initializeResult.daemon_info.version,
 				schemaVersion: initializeResult.schema_version,
 				grantedCapabilities: Object.freeze([...initializeResult.granted_capabilities]),
@@ -483,6 +579,7 @@ export class HarnessService extends Disposable implements IHarnessService {
 				state: HarnessConnectionState.Error,
 				mode: 'polling',
 				writesEnabled: false,
+				supportedWriteMethods: EMPTY_SUPPORTED_WRITE_METHODS,
 				daemonVersion: undefined,
 				schemaVersion: undefined,
 				grantedCapabilities: Object.freeze([]),
@@ -500,6 +597,7 @@ export class HarnessService extends Disposable implements IHarnessService {
 			state: HarnessConnectionState.Connected,
 			mode: 'polling',
 			writesEnabled: false,
+			supportedWriteMethods: EMPTY_SUPPORTED_WRITE_METHODS,
 			daemonVersion: undefined,
 			schemaVersion: undefined,
 			grantedCapabilities: Object.freeze([]),
@@ -580,6 +678,7 @@ export class HarnessService extends Disposable implements IHarnessService {
 				state: HarnessConnectionState.Error,
 				mode: 'none',
 				writesEnabled: false,
+				supportedWriteMethods: EMPTY_SUPPORTED_WRITE_METHODS,
 				daemonVersion: undefined,
 				schemaVersion: undefined,
 				grantedCapabilities: Object.freeze([]),
@@ -593,6 +692,7 @@ export class HarnessService extends Disposable implements IHarnessService {
 			state: HarnessConnectionState.Reconnecting,
 			mode: 'daemon',
 			writesEnabled: false,
+			supportedWriteMethods: EMPTY_SUPPORTED_WRITE_METHODS,
 			daemonVersion: undefined,
 			schemaVersion: undefined,
 			grantedCapabilities: Object.freeze([]),
@@ -612,6 +712,7 @@ export class HarnessService extends Disposable implements IHarnessService {
 				state: HarnessConnectionState.Error,
 				mode: 'none',
 				writesEnabled: false,
+				supportedWriteMethods: EMPTY_SUPPORTED_WRITE_METHODS,
 				daemonVersion: undefined,
 				schemaVersion: undefined,
 				grantedCapabilities: Object.freeze([]),
@@ -857,11 +958,100 @@ export class HarnessService extends Disposable implements IHarnessService {
 		this.connectionState.set(value, undefined, undefined);
 	}
 
-	private failClosedWrite(capabilityLabel: string): never {
+	private requireSupportedWriteMethod(method: HarnessSupportedWriteMethod): HarnessDaemonClient {
+		const client = this.daemonClient;
+		if (!client || this.connectionState.get().mode !== 'daemon') {
+			throw new Error(DAEMON_REQUIRED_ERROR);
+		}
+		if (!client.supportsMethod(method)) {
+			throw new Error(`Current harness daemon does not expose ${method}.`);
+		}
+
+		const requiredCapability = REQUIRED_CAPABILITY_BY_WRITE_METHOD[method];
+		if (!client.grantedCapabilities.includes(requiredCapability)) {
+			throw new Error(`Current harness daemon does not grant ${requiredCapability} capability for ${method}.`);
+		}
+		return client;
+	}
+
+	private failUnsupportedWrite(method: string): never {
 		if (this.connectionState.get().mode === 'daemon') {
-			throw new Error(`Current harness daemon does not yet expose ${capabilityLabel}.`);
+			throw new Error(`Current harness daemon does not expose ${method}.`);
 		}
 		throw new Error(DAEMON_REQUIRED_ERROR);
+	}
+
+	private async materializeDispatchPacket(
+		client: HarnessDaemonClient,
+		taskId: string,
+		command: AtlasModel.IWireDispatchCommand,
+	): Promise<string> {
+		const fabricIdentity = client.fabricIdentity;
+		if (!fabricIdentity) {
+			throw new Error('Harness daemon fabric identity is unavailable for dispatch.submit.');
+		}
+
+		const roleId = requireNonEmpty(command.role_id, 'Atlas dispatch submission requires a non-empty role_id.');
+		const message = requireNonEmpty(command.message, 'Atlas dispatch submission requires a non-empty message.');
+		const fromRole = normalizeOptionalString(command.from_role) ?? DEFAULT_DISPATCH_FROM_ROLE;
+		const subagentNickname = normalizeOptionalString(command.subagent_nickname);
+		const packetDir = join(fabricIdentity.repo_root, '.codex', 'atlas-dispatch-packets');
+		const packetHash = createHash('sha256').update(JSON.stringify({
+			task_id: taskId,
+			role_id: roleId,
+			from_role: fromRole,
+			message,
+			subagent_nickname: subagentNickname ?? null,
+			skip_gates: false,
+		})).digest('hex');
+		const packetPath = join(packetDir, `${sanitizeFileComponent(taskId)}-${sanitizeFileComponent(roleId)}-${packetHash.slice(0, 12)}.task.json`);
+		const packetPathRelative = repoRelativePath(fabricIdentity.repo_root, packetPath);
+
+		await fs.mkdir(packetDir, { recursive: true });
+		if (!(await pathExists(packetPath))) {
+			const packet = {
+				task_id: taskId,
+				created_at: new Date().toISOString(),
+				from_role: fromRole,
+				to_role: roleId,
+				summary: message,
+				acceptance: [message],
+				constraints: [],
+				artifacts: [packetPathRelative],
+				memory_keywords: [],
+				phase_refs: [],
+				context_paths: [],
+				requires_prompt_engineering: false,
+				allow_push: false,
+				allow_merge: false,
+			};
+			await fs.writeFile(packetPath, `${JSON.stringify(packet, null, 2)}\n`, 'utf8');
+		}
+
+		return packetPath;
+	}
+
+	private async refreshObjectiveSubmitState(client: HarnessDaemonClient, result: { readonly objective_id: string; readonly root_task_id: string }): Promise<void> {
+		try {
+			const detail = await client.request('objective.get', { objective_id: result.objective_id });
+			this.upsertObjectiveRecord(detail.objective);
+			this.upsertTaskTree(await client.request('task.tree', { root_task_id: result.root_task_id }));
+			this.publishObjectiveState();
+			this.publishTaskState();
+		} catch (error) {
+			this.logService.warn(`Harness objective.submit follow-up refresh failed closed: ${asError(error).message}`);
+		}
+	}
+
+	private async refreshDispatchSubmitState(client: HarnessDaemonClient, taskId: string): Promise<void> {
+		try {
+			const detail = await client.request('task.get', { task_id: taskId });
+			const rootTaskId = normalizeOptionalString(detail.root_task_id) ?? taskId;
+			this.upsertTaskTree(await client.request('task.tree', { root_task_id: rootTaskId }));
+			this.publishTaskState();
+		} catch (error) {
+			this.logService.warn(`Harness dispatch.submit follow-up refresh failed closed: ${asError(error).message}`);
+		}
 	}
 
 	private canFallBackToPolling(error: unknown): boolean {
@@ -1065,6 +1255,7 @@ function disconnectedConnectionState(): IHarnessConnectionInfo {
 		state: HarnessConnectionState.Disconnected,
 		mode: 'none',
 		writesEnabled: false,
+		supportedWriteMethods: EMPTY_SUPPORTED_WRITE_METHODS,
 		daemonVersion: undefined,
 		schemaVersion: undefined,
 		grantedCapabilities: Object.freeze([]),
@@ -1080,6 +1271,18 @@ function emptySubscriptionIds(): Record<HarnessSubscriptionTopic, string | undef
 		review: undefined,
 		merge: undefined,
 	};
+}
+
+function supportedWriteMethodsFromInitialize(
+	initializeResult: {
+		readonly supported_methods: readonly string[];
+		readonly granted_capabilities: readonly HarnessCapability[];
+	},
+): readonly HarnessSupportedWriteMethod[] {
+	return Object.freeze(ATLAS_SUPPORTED_WRITE_METHODS.filter(method =>
+		initializeResult.supported_methods.includes(method)
+		&& initializeResult.granted_capabilities.includes(REQUIRED_CAPABILITY_BY_WRITE_METHOD[method]),
+	));
 }
 
 function unsubscribeMethodForTopic(topic: HarnessSubscriptionTopic): `${HarnessSubscriptionTopic}.unsubscribe` {
@@ -1149,6 +1352,30 @@ function nonEmpty(value: string | undefined): string | undefined {
 
 function asError(error: unknown): Error {
 	return error instanceof Error ? error : new Error(String(error));
+}
+
+function requireNonEmpty(value: string, errorMessage: string): string {
+	const normalized = value.trim();
+	if (!normalized) {
+		throw new Error(errorMessage);
+	}
+	return normalized;
+}
+
+function normalizeOptionalString(value: string | null | undefined): string | undefined {
+	if (typeof value !== 'string') {
+		return undefined;
+	}
+	const normalized = value.trim();
+	return normalized.length > 0 ? normalized : undefined;
+}
+
+function repoRelativePath(repoRoot: string, targetPath: string): string {
+	return relativePath(repoRoot, targetPath).replace(/\\/g, '/');
+}
+
+function sanitizeFileComponent(value: string): string {
+	return value.replace(/[^A-Za-z0-9._-]+/g, '-');
 }
 
 async function pathExists(targetPath: string): Promise<boolean> {

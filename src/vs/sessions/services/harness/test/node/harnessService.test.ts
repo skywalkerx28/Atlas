@@ -18,17 +18,25 @@ import { HarnessConnectionState } from '../../common/harnessService.js';
 import { HarnessDaemonProtocolError, HarnessDaemonUnavailableError } from '../../electron-browser/harnessDaemonClient.js';
 import { HarnessService as BrowserHarnessService } from '../../browser/harnessService.js';
 import { HarnessService as DesktopHarnessService } from '../../electron-browser/harnessService.js';
+import type { HarnessCapability, HarnessSupportedWriteMethod, IHarnessFabricIdentity } from '../../common/harnessTypes.js';
 import {
+	createControlResult,
 	createDaemonHealthState,
+	createDispatchSubmitResult,
 	createFleetSnapshotResult,
 	createFleetWorkerState,
 	createHarnessInitializeResult,
 	createMergeListResult,
 	createMergeQueueRecord,
+	createObjectiveDetail,
+	createObjectiveSubmitResult,
 	createObjectiveListResult,
 	createObjectiveRecord,
 	createQueueDispatch,
+	createReviewAuthorizePromotionResult,
 	createReviewCandidateRecord,
+	createReviewEnqueueMergeResult,
+	createReviewGateVerdictResult,
 	createReviewListResult,
 	createTaskDetail,
 	createTaskListResult,
@@ -201,6 +209,7 @@ suite('HarnessService', () => {
 			assert.strictEqual(connectionState.state, HarnessConnectionState.Connected);
 			assert.strictEqual(connectionState.mode, 'daemon');
 			assert.strictEqual(connectionState.writesEnabled, false);
+			assert.deepStrictEqual(connectionState.supportedWriteMethods, []);
 			assert.deepStrictEqual(connectionState.grantedCapabilities, ['read']);
 
 			const methods = server.requests.map(request => request.method);
@@ -400,20 +409,303 @@ suite('HarnessService', () => {
 		}
 	});
 
-	test('desktop write methods stay fail-closed in daemon mode', async () => {
-		const service = disposables.add(createDesktopHarnessService(os.tmpdir()));
-		service.connectionState.set(connectionState('daemon'), undefined, undefined);
-		await assertDesktopWriteFailures(service, {
-			pauseAgent: 'Current harness daemon does not yet expose control methods.',
-			resumeAgent: 'Current harness daemon does not yet expose control methods.',
-			cancelAgent: 'Current harness daemon does not yet expose control methods.',
-			steerAgent: 'Current harness daemon does not yet expose steer methods.',
-			submitObjective: 'Current harness daemon does not yet expose objective methods.',
-			submitDispatch: 'Current harness daemon does not yet expose dispatch methods.',
-			recordGateVerdict: 'Current harness daemon does not yet expose review methods.',
-			authorizePromotion: 'Current harness daemon does not yet expose promotion methods.',
-			enqueueForMerge: 'Current harness daemon does not yet expose merge methods.',
+	test('daemon mode reports a partial write subset truthfully', async () => {
+		const fixture = await createDaemonFixture();
+		const server = await startMockHarnessDaemon({
+			socketPath: fixture.socketPath,
+			initializeResult: createWriteEnabledInitializeResult({
+				granted_capabilities: Object.freeze(['read', 'control', 'dispatch'] as const),
+				supportedWriteMethods: Object.freeze(['control.pause', 'control.cancel', 'dispatch.submit'] as const),
+				fabric_identity: fixture.fabricIdentity,
+			}),
+			objectiveListResult: createObjectiveListResult({ objectives: Object.freeze([]) }),
+			reviewListResult: createReviewListResult({ reviews: Object.freeze([]) }),
+			mergeListResult: createMergeListResult({ entries: Object.freeze([]) }),
+			taskListResult: createTaskListResult({ roots: Object.freeze([]) }),
+			taskTreeResult: createTaskTreeResult({ nodes: Object.freeze([]) }),
 		});
+		const service = disposables.add(createDesktopHarnessService(fixture.homeRoot));
+		try {
+			await service.connect(URI.file(fixture.workspaceRoot));
+
+			const state = service.connectionState.get();
+			assert.strictEqual(state.mode, 'daemon');
+			assert.strictEqual(state.writesEnabled, true);
+			assert.deepStrictEqual(state.supportedWriteMethods, ['control.pause', 'control.cancel', 'dispatch.submit']);
+			assert.deepStrictEqual(state.grantedCapabilities, ['read', 'control', 'dispatch']);
+		} finally {
+			await service.disconnect();
+			await server.dispose();
+			await fixture.dispose();
+		}
+	});
+
+	test('delegates the shipped daemon write subset and keeps state truthful', async () => {
+		const fixture = await createDaemonFixture();
+		const reviewRecord = createReviewCandidateRecord({ dispatch_id: 'disp-review-1' });
+		const mergeEntry = createMergeQueueRecord({ dispatch_id: 'disp-review-1', task_id: 'TASK-ROOT-1' });
+		const objective = createObjectiveRecord({
+			spec: {
+				objective_id: 'OBJ-SUBMIT',
+				problem_statement: 'Ship wave d',
+			},
+			root_task_id: 'TASK-ROOT-1',
+		});
+		const server = await startMockHarnessDaemon({
+			socketPath: fixture.socketPath,
+			initializeResult: createWriteEnabledInitializeResult({
+				granted_capabilities: Object.freeze(['read', 'control', 'dispatch', 'review', 'merge'] as const),
+				supportedWriteMethods: Object.freeze([
+					'control.pause',
+					'control.cancel',
+					'dispatch.submit',
+					'objective.submit',
+					'review.gate_verdict',
+					'review.authorize_promotion',
+					'review.enqueue_merge',
+				] as const),
+				fabric_identity: fixture.fabricIdentity,
+			}),
+			objectiveListResult: createObjectiveListResult({ objectives: Object.freeze([]) }),
+			objectiveDetail: createObjectiveDetail({ objective }),
+			objectiveSubmitResult: createObjectiveSubmitResult({
+				objective_id: 'OBJ-SUBMIT',
+				root_task_id: 'TASK-ROOT-1',
+				dispatch_id: 'disp-objective-submit',
+			}),
+			reviewListResult: createReviewListResult({ reviews: Object.freeze([reviewRecord]) }),
+			reviewGateVerdictResult: createReviewGateVerdictResult({
+				dispatch_id: 'disp-review-1',
+				review: createReviewCandidateRecord({
+					dispatch_id: 'disp-review-1',
+					judge_decision: 'go',
+					review_state: 'review_go',
+					reviewed_by_role: 'axiom-judge',
+				}),
+			}),
+			reviewAuthorizePromotionResult: createReviewAuthorizePromotionResult({
+				dispatch_id: 'disp-review-1',
+				review: createReviewCandidateRecord({
+					dispatch_id: 'disp-review-1',
+					promotion_state: 'promotion_authorized',
+					promotion_authorized_by_role: 'axiom-planner',
+				}),
+			}),
+			reviewEnqueueMergeResult: createReviewEnqueueMergeResult({
+				dispatch_id: 'disp-review-1',
+				entry: mergeEntry,
+			}),
+			mergeListResult: createMergeListResult({ entries: Object.freeze([]) }),
+			dispatchSubmitResult: createDispatchSubmitResult({
+				dispatch_id: 'disp-dispatch-submit',
+				task_id: 'TASK-ROOT-1',
+				role_id: 'axiom-worker',
+			}),
+			taskListResult: createTaskListResult({
+				roots: Object.freeze([
+					{
+						task: createTaskNode({ task_id: 'TASK-ROOT-1', parent_task_id: null, status: 'running' }),
+						latest_dispatch: createQueueDispatch({
+							dispatch_id: 'disp-existing',
+							task_id: 'TASK-ROOT-1',
+							role_id: 'axiom-worker',
+							priority: 'p2',
+						}),
+					},
+				]),
+			}),
+			taskTreeResult: createTaskTreeResult({
+				root_task_id: 'TASK-ROOT-1',
+				objective,
+				nodes: Object.freeze([
+					{
+						task: createTaskNode({ task_id: 'TASK-ROOT-1', parent_task_id: null, status: 'running' }),
+						latest_dispatch: createQueueDispatch({
+							dispatch_id: 'disp-existing',
+							task_id: 'TASK-ROOT-1',
+							role_id: 'axiom-worker',
+							priority: 'p2',
+						}),
+					},
+				]),
+			}),
+			taskDetail: createTaskDetail({
+				task: createTaskNode({ task_id: 'TASK-ROOT-1', parent_task_id: null, status: 'running' }),
+				root_task_id: 'TASK-ROOT-1',
+				objective,
+				latest_dispatch: createQueueDispatch({
+					dispatch_id: 'disp-existing',
+					task_id: 'TASK-ROOT-1',
+					role_id: 'axiom-worker',
+					priority: 'p2',
+				}),
+			}),
+		});
+		const service = disposables.add(createDesktopHarnessService(fixture.homeRoot));
+		try {
+			await service.connect(URI.file(fixture.workspaceRoot));
+
+			await service.pauseAgent('disp-pause-1');
+			await service.cancelAgent('disp-cancel-1');
+			const objectiveId = await service.submitObjective('Ship wave d', {
+				priority: 'p1' as AtlasModel.WireDispatchPriority,
+				contextPaths: Object.freeze(['src/vs/sessions']),
+				constraints: Object.freeze(['stay read-only in UI']),
+				desiredOutcomes: Object.freeze(['bridge writes']),
+				successCriteria: Object.freeze(['tests pass']),
+				playbookIds: Object.freeze(['implementation']),
+				operatorNotes: Object.freeze(['note']),
+				budgetCeilingUsd: 10,
+				maxParallelWorkers: 2,
+			});
+			const dispatchId = await service.submitDispatch({
+				role_id: 'axiom-worker',
+				task_id: 'TASK-ROOT-1',
+				message: 'Implement the bounded bridge write subset.',
+				skip_gates: false,
+			});
+			await service.recordGateVerdict('disp-review-1', 'go' as AtlasModel.ReviewDecision, 'axiom-judge');
+			await service.authorizePromotion('disp-review-1', 'axiom-planner');
+			await service.enqueueForMerge('disp-review-1');
+
+			assert.strictEqual(objectiveId, 'OBJ-SUBMIT');
+			assert.strictEqual(dispatchId, 'disp-dispatch-submit');
+			assert.ok(service.objectives.get().some(item => item.objectiveId === 'OBJ-SUBMIT'));
+			assert.ok(service.reviewGates.get().some(item => item.dispatchId === 'disp-review-1'));
+			assert.ok(service.mergeQueue.get().some(item => item.dispatchId === 'disp-review-1'));
+
+			const writeRequests = server.requests.filter(request => [
+				'control.pause',
+				'control.cancel',
+				'objective.submit',
+				'dispatch.submit',
+				'review.gate_verdict',
+				'review.authorize_promotion',
+				'review.enqueue_merge',
+			].includes(request.method));
+			assert.deepStrictEqual(writeRequests.map(request => request.method), [
+				'control.pause',
+				'control.cancel',
+				'objective.submit',
+				'dispatch.submit',
+				'review.gate_verdict',
+				'review.authorize_promotion',
+				'review.enqueue_merge',
+			]);
+
+			assert.deepStrictEqual(writeRequests[0].params, { dispatch_id: 'disp-pause-1' });
+			assert.deepStrictEqual(writeRequests[1].params, { dispatch_id: 'disp-cancel-1' });
+			assert.deepStrictEqual(writeRequests[2].params, {
+				summary: 'Ship wave d',
+				priority: 'p1',
+				context_paths: ['src/vs/sessions'],
+				playbooks: ['implementation'],
+				desired_outcomes: ['bridge writes'],
+				constraints: ['stay read-only in UI'],
+				success_criteria: ['tests pass'],
+				operator_notes: ['note'],
+				budget_ceiling_usd: 10,
+				max_parallel_workers: 2,
+			});
+			assert.deepStrictEqual(writeRequests[4].params, {
+				dispatch_id: 'disp-review-1',
+				decision: 'go',
+				reviewed_by_role: 'axiom-judge',
+			});
+			assert.deepStrictEqual(writeRequests[5].params, {
+				dispatch_id: 'disp-review-1',
+				authorized_by_role: 'axiom-planner',
+			});
+			assert.deepStrictEqual(writeRequests[6].params, { dispatch_id: 'disp-review-1' });
+
+			const dispatchParams = writeRequests[3].params as { readonly packet_path: string; readonly metadata: Record<string, unknown> };
+			assert.strictEqual(typeof dispatchParams.packet_path, 'string');
+			assert.strictEqual(dispatchParams.metadata['source'], 'atlas-ide');
+			assert.strictEqual(dispatchParams.metadata['from_role'], 'axiom-planner');
+			assert.strictEqual(dispatchParams.metadata['skip_gates'], false);
+			const packetRaw = await fs.readFile(dispatchParams.packet_path, 'utf8');
+			const packet = JSON.parse(packetRaw) as Record<string, unknown>;
+			assert.strictEqual(packet['task_id'], 'TASK-ROOT-1');
+			assert.strictEqual(packet['from_role'], 'axiom-planner');
+			assert.strictEqual(packet['to_role'], 'axiom-worker');
+			assert.strictEqual(packet['summary'], 'Implement the bounded bridge write subset.');
+			assert.deepStrictEqual(packet['acceptance'], ['Implement the bounded bridge write subset.']);
+		} finally {
+			await service.disconnect();
+			await server.dispose();
+			await fixture.dispose();
+		}
+	});
+
+	test('daemon write methods fail closed when the daemon does not grant required capability', async () => {
+		const fixture = await createDaemonFixture();
+		const server = await startMockHarnessDaemon({
+			socketPath: fixture.socketPath,
+			initializeResult: createWriteEnabledInitializeResult({
+				granted_capabilities: Object.freeze(['read'] as const),
+				supportedWriteMethods: Object.freeze(['control.pause'] as const),
+				fabric_identity: fixture.fabricIdentity,
+			}),
+			objectiveListResult: createObjectiveListResult({ objectives: Object.freeze([]) }),
+			reviewListResult: createReviewListResult({ reviews: Object.freeze([]) }),
+			mergeListResult: createMergeListResult({ entries: Object.freeze([]) }),
+			taskListResult: createTaskListResult({ roots: Object.freeze([]) }),
+			taskTreeResult: createTaskTreeResult({ nodes: Object.freeze([]) }),
+		});
+		const service = disposables.add(createDesktopHarnessService(fixture.homeRoot));
+		try {
+			await service.connect(URI.file(fixture.workspaceRoot));
+			assert.strictEqual(service.connectionState.get().writesEnabled, false);
+			assert.deepStrictEqual(service.connectionState.get().supportedWriteMethods, []);
+			await assert.rejects(
+				() => service.pauseAgent('disp-1'),
+				errorMessage('Current harness daemon does not grant control capability for control.pause.'),
+			);
+		} finally {
+			await service.disconnect();
+			await server.dispose();
+			await fixture.dispose();
+		}
+	});
+
+	test('unsupported and unshipped write methods stay fail-closed in daemon mode', async () => {
+		const fixture = await createDaemonFixture();
+		const server = await startMockHarnessDaemon({
+			socketPath: fixture.socketPath,
+			initializeResult: createWriteEnabledInitializeResult({
+				granted_capabilities: Object.freeze(['read', 'control'] as const),
+				supportedWriteMethods: Object.freeze(['control.pause'] as const),
+				fabric_identity: fixture.fabricIdentity,
+			}),
+			controlResult: createControlResult({ dispatch_id: 'disp-1' }),
+			objectiveListResult: createObjectiveListResult({ objectives: Object.freeze([]) }),
+			reviewListResult: createReviewListResult({ reviews: Object.freeze([]) }),
+			mergeListResult: createMergeListResult({ entries: Object.freeze([]) }),
+			taskListResult: createTaskListResult({ roots: Object.freeze([]) }),
+			taskTreeResult: createTaskTreeResult({ nodes: Object.freeze([]) }),
+		});
+		const service = disposables.add(createDesktopHarnessService(fixture.homeRoot));
+		try {
+			await service.connect(URI.file(fixture.workspaceRoot));
+			await service.pauseAgent('disp-1');
+			await assertDesktopWriteFailures(service, {
+				pauseAgent: undefined,
+				resumeAgent: 'Current harness daemon does not expose control.resume.',
+				cancelAgent: 'Current harness daemon does not expose control.cancel.',
+				steerAgent: 'Current harness daemon does not expose control.steer.',
+				pauseAll: 'Current harness daemon does not expose pauseAll.',
+				resumeAll: 'Current harness daemon does not expose resumeAll.',
+				submitObjective: 'Current harness daemon does not expose objective.submit.',
+				submitDispatch: 'Current harness daemon does not expose dispatch.submit.',
+				recordGateVerdict: 'Current harness daemon does not expose review.gate_verdict.',
+				authorizePromotion: 'Current harness daemon does not expose review.authorize_promotion.',
+				enqueueForMerge: 'Current harness daemon does not expose review.enqueue_merge.',
+			});
+		} finally {
+			await service.disconnect();
+			await server.dispose();
+			await fixture.dispose();
+		}
 	});
 
 	test('desktop write methods stay fail-closed in polling mode', async () => {
@@ -424,6 +716,8 @@ suite('HarnessService', () => {
 			resumeAgent: DAEMON_REQUIRED_ERROR,
 			cancelAgent: DAEMON_REQUIRED_ERROR,
 			steerAgent: DAEMON_REQUIRED_ERROR,
+			pauseAll: DAEMON_REQUIRED_ERROR,
+			resumeAll: DAEMON_REQUIRED_ERROR,
 			submitObjective: DAEMON_REQUIRED_ERROR,
 			submitDispatch: DAEMON_REQUIRED_ERROR,
 			recordGateVerdict: DAEMON_REQUIRED_ERROR,
@@ -438,6 +732,7 @@ suite('HarnessService', () => {
 		assert.strictEqual(service.connectionState.get().state, HarnessConnectionState.Disconnected);
 		assert.strictEqual(service.connectionState.get().mode, 'none');
 		assert.strictEqual(service.connectionState.get().writesEnabled, false);
+		assert.deepStrictEqual(service.connectionState.get().supportedWriteMethods, []);
 		assert.deepStrictEqual(service.objectives.get(), []);
 		assert.deepStrictEqual(service.swarms.get(), []);
 		assert.deepStrictEqual(service.tasks.get(), []);
@@ -477,6 +772,7 @@ function connectionState(mode: 'daemon' | 'polling') {
 		state: HarnessConnectionState.Connected,
 		mode,
 		writesEnabled: false,
+		supportedWriteMethods: Object.freeze([]),
 		daemonVersion: mode === 'daemon' ? '0.1.0-test' : undefined,
 		schemaVersion: mode === 'daemon' ? '2026-03-01' : undefined,
 		grantedCapabilities: mode === 'daemon' ? Object.freeze(['read']) : Object.freeze([]),
@@ -491,39 +787,69 @@ async function assertDesktopWriteFailures(
 		| 'resumeAgent'
 		| 'cancelAgent'
 		| 'steerAgent'
+		| 'pauseAll'
+		| 'resumeAll'
 		| 'submitObjective'
 		| 'submitDispatch'
 		| 'recordGateVerdict'
 		| 'authorizePromotion'
 		| 'enqueueForMerge',
-		string
+		string | undefined
 	>,
 ): Promise<void> {
-	await assert.rejects(() => service.pauseAgent('disp-1'), errorMessage(expectedMessages.pauseAgent));
-	await assert.rejects(() => service.resumeAgent('disp-1'), errorMessage(expectedMessages.resumeAgent));
-	await assert.rejects(() => service.cancelAgent('disp-1'), errorMessage(expectedMessages.cancelAgent));
-	await assert.rejects(() => service.steerAgent('disp-1', 'msg'), errorMessage(expectedMessages.steerAgent));
-	await assert.rejects(() => service.submitObjective('problem'), errorMessage(expectedMessages.submitObjective));
-	await assert.rejects(
-		() => service.submitDispatch({ role_id: 'worker', message: 'noop', skip_gates: false }),
-		errorMessage(expectedMessages.submitDispatch),
+	await assertFailureOrSkip(() => service.pauseAgent('disp-1'), expectedMessages.pauseAgent);
+	await assertFailureOrSkip(() => service.resumeAgent('disp-1'), expectedMessages.resumeAgent);
+	await assertFailureOrSkip(() => service.cancelAgent('disp-1'), expectedMessages.cancelAgent);
+	await assertFailureOrSkip(() => service.steerAgent('disp-1', 'msg'), expectedMessages.steerAgent);
+	await assertFailureOrSkip(() => service.pauseAll(), expectedMessages.pauseAll);
+	await assertFailureOrSkip(() => service.resumeAll(), expectedMessages.resumeAll);
+	await assertFailureOrSkip(() => service.submitObjective('problem'), expectedMessages.submitObjective);
+	await assertFailureOrSkip(
+		() => service.submitDispatch({ role_id: 'worker', task_id: 'TASK-ROOT-1', message: 'noop', skip_gates: false }),
+		expectedMessages.submitDispatch,
 	);
-	await assert.rejects(
-		() => service.recordGateVerdict('disp-1', 'go' as AtlasModel.ReviewDecision, 'judge'),
-		errorMessage(expectedMessages.recordGateVerdict),
+	await assertFailureOrSkip(
+		() => service.recordGateVerdict('disp-1', 'go' as AtlasModel.ReviewDecision, 'axiom-judge'),
+		expectedMessages.recordGateVerdict,
 	);
-	await assert.rejects(
-		() => service.authorizePromotion('disp-1', 'planner'),
-		errorMessage(expectedMessages.authorizePromotion),
+	await assertFailureOrSkip(
+		() => service.authorizePromotion('disp-1', 'axiom-planner'),
+		expectedMessages.authorizePromotion,
 	);
-	await assert.rejects(
+	await assertFailureOrSkip(
 		() => service.enqueueForMerge('disp-1'),
-		errorMessage(expectedMessages.enqueueForMerge),
+		expectedMessages.enqueueForMerge,
 	);
 }
 
 function errorMessage(expected: string) {
 	return (error: unknown) => error instanceof Error && error.message === expected;
+}
+
+async function assertFailureOrSkip(factory: () => Promise<unknown>, expected: string | undefined): Promise<void> {
+	if (expected === undefined) {
+		await factory();
+		return;
+	}
+	await assert.rejects(factory, errorMessage(expected));
+}
+
+function createWriteEnabledInitializeResult(overrides: {
+	readonly granted_capabilities: readonly HarnessCapability[];
+	readonly supportedWriteMethods: readonly HarnessSupportedWriteMethod[];
+	readonly fabric_identity?: IHarnessFabricIdentity;
+}) {
+	return createHarnessInitializeResult({
+		granted_capabilities: overrides.granted_capabilities,
+		fabric_identity: overrides.fabric_identity,
+		supported_methods: Object.freeze([
+			'initialize',
+			...new Set([
+				...createHarnessInitializeResult().supported_methods,
+				...overrides.supportedWriteMethods,
+			]),
+		]),
+	});
 }
 
 async function createDaemonFixture() {

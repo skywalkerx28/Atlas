@@ -7,7 +7,7 @@ import { Event } from '../../../../base/common/event.js';
 import { IObservable } from '../../../../base/common/observable.js';
 import { URI } from '../../../../base/common/uri.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
-import type { IHarnessTaskTree } from './harnessTypes.js';
+import type { HarnessSupportedWriteMethod, IHarnessTaskTree } from './harnessTypes.js';
 
 export const IHarnessService = createDecorator<IHarnessService>('harnessService');
 
@@ -25,6 +25,7 @@ export interface IHarnessConnectionInfo {
 	readonly state: HarnessConnectionState;
 	readonly mode: HarnessConnectionMode;
 	readonly writesEnabled: boolean;
+	readonly supportedWriteMethods: readonly HarnessSupportedWriteMethod[];
 	readonly daemonVersion: string | undefined;
 	readonly schemaVersion: string | undefined;
 	readonly grantedCapabilities: readonly string[];

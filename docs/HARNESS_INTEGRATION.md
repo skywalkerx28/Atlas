@@ -38,10 +38,10 @@ The harness daemon (`axiom-harness serve`) is a long-running process that expose
 - **Authentication**: Token-based client identity, per-method capability model, audit attribution on all writes
 - **Resumable streams**: Monotonic sequence numbers per topic, resume-from-seq on reconnect, `resync_required` for gap recovery
 - **Stream classification**: Coalescible topics (fleet, health, cost) vs. loss-intolerant topics (reviews, journal, transcripts, activity)
-- **Write delegation (future)**: once the daemon exposes write families, Atlas should route them through daemon methods such as `dispatch.submit`, `objective.submit`, and `event.emit` rather than bypassing harness validation
+- **Write delegation**: Atlas routes the currently shipped write subset through daemon methods such as `control.pause`, `dispatch.submit`, `objective.submit`, `review.gate_verdict`, `review.authorize_promotion`, and `review.enqueue_merge` rather than bypassing harness validation
 - **Failure isolation**: Daemon and orchestrator run as independent tokio tasks with bounded queues and panic containment
 
-Current merged daemon surface: the daemon now exposes these public read methods:
+Current merged daemon surface: the daemon now exposes these public methods:
 
 - `initialize` with `fabric_identity`
 - `shutdown`
@@ -56,7 +56,7 @@ Current merged daemon surface: the daemon now exposes these public read methods:
 - `agent.activity.get`
 - `transcript.get`
 
-Wave C Atlas consumes the first five families plus `task.get` / `task.list` / `task.tree`, but still leaves `cost.get`, `agent.activity.get`, and `transcript.get` as empty/default surfaces for the next bridge wave. Atlas must still treat everything outside that list as unsupported. In particular, there is still no public daemon write family, no public `task.subscribe`, and no public memory or worktree inspection stream yet.
+Wave D Atlas consumes the first five families plus `task.get` / `task.list` / `task.tree`, truthfully adopts the shipped daemon write subset (`control.pause`, `control.cancel`, `dispatch.submit`, `objective.submit`, `review.gate_verdict`, `review.authorize_promotion`, `review.enqueue_merge`), and still leaves `cost.get`, `agent.activity.get`, and `transcript.get` as empty/default surfaces for a later bridge wave. Atlas must still treat everything outside that list as unsupported. In particular, there is still no public `task.subscribe`, no public memory/worktree inspection stream, and no public support yet for `control.resume` or `control.steer`.
 
 ### Fallback: Read-Only Polling
 
@@ -70,14 +70,28 @@ JSONL tailing and CLI subprocess write paths are intentionally not implemented i
 
 Atlas does **not** write directly to `dispatch_queue`, `workspace_event_queue`, or `objectives` tables. These tables have validation, idempotency, and journal recording logic in the harness service layer (`EventDispatcher`, `ObjectiveIntakeService`, `dispatch.rs`) that must not be bypassed.
 
-Wave A Atlas ships **no write path**. In both daemon mode and polling mode:
+Current merged Wave D Atlas ships a **partial daemon-only write path**. In daemon mode, Atlas now delegates only the shipped subset:
+
+- `control.pause`
+- `control.cancel`
+- `dispatch.submit`
+- `objective.submit`
+- `review.gate_verdict`
+- `review.authorize_promotion`
+- `review.enqueue_merge`
+
+Atlas reports this truthfully through `IHarnessConnectionInfo`:
+
+- `writesEnabled` is a coarse signal for "some daemon writes are available"
+- `supportedWriteMethods` lists the exact shipped subset the connected daemon both exposes and grants
+
+Polling mode and the browser stub remain read-only:
 
 - `writesEnabled` is `false`
-- all `IHarnessService` write methods fail closed
+- `supportedWriteMethods` is empty
+- unsupported `IHarnessService` write methods fail closed
 - there is no CLI subprocess write fallback
 - there is no direct SQLite write path
-
-When later daemon method families exist, Atlas can delegate writes through the daemon only.
 
 Atlas implements this as `IHarnessService` — a singleton service in `sessions/services/harness/` that manages a connection to one harness workspace and exposes harness state as observables. In the current merged bridge:
 
@@ -110,9 +124,9 @@ The implication for Atlas is simple: the UI should group data by swarm first, th
 The central bridge between Atlas and the harness. Manages:
 
 - **Connection lifecycle**: Attempts daemon socket at `$AXIOM_HARNESS_SOCK` or `~/.codex/harness.sock`; validates `initialize.fabric_identity.repo_root` against the opened workspace; falls back to resolving `router.db` via the harness path resolution chain only when the daemon is absent or unreachable
-- **Daemon mode (Wave C / Phase 3)**: Performs `initialize`, validates `fabric_identity`, performs `daemon.ping`, loads `fleet.snapshot`, `health.get`, `objective.list`, `review.list`, `merge.list`, and `task.list`, expands each root task with `task.tree`, subscribes to `fleet.delta`, `health.update`, `objective.update`, `review.update`, and `merge.update`, and derives `swarms` from that cached state while keeping unsupported observables empty/default
+- **Daemon mode (Wave D / Phase 3+)**: Performs `initialize`, validates `fabric_identity`, performs `daemon.ping`, loads `fleet.snapshot`, `health.get`, `objective.list`, `review.list`, `merge.list`, and `task.list`, expands each root task with `task.tree`, subscribes to `fleet.delta`, `health.update`, `objective.update`, `review.update`, and `merge.update`, derives `swarms` from that cached state, and delegates the shipped write subset above while keeping unsupported observables and unshipped write methods fail-closed
 - **Polling mode** (fallback): Polls read-only SQLite tables for fleet-relevant state on an interval
-- **Write operations (Wave C)**: All writes fail closed. Atlas does not shell out to `axiom-harness`, invoke `orchestrator-backend.sh`, or write `dispatch_control`
+- **Write operations (Wave D)**: Atlas does not shell out to `axiom-harness`, invoke `orchestrator-backend.sh`, or write `dispatch_control`. Unshipped writes like `control.resume`, `control.steer`, `pauseAll`, and `resumeAll` remain explicit fail-closed errors.
 - **State aggregation**: Mirrors the TUI's `FleetSnapshot` pattern — assembles all data into a single reactive state tree
 
 ```typescript
@@ -150,7 +164,7 @@ interface IHarnessService {
     getMemoryRecords(swarmId: string): Promise<readonly IMemoryRecord[]>;
     getWorktreeState(dispatchId: string): Promise<IWorktreeState | undefined>;
 
-    // Control actions (Wave A: fail closed in all modes)
+    // Control actions
     pauseAgent(dispatchId: string): Promise<void>;
     cancelAgent(dispatchId: string): Promise<void>;
     resumeAgent(dispatchId: string): Promise<void>;
@@ -158,11 +172,11 @@ interface IHarnessService {
     pauseAll(): Promise<void>;
     resumeAll(): Promise<void>;
 
-    // Dispatch (Wave A: fail closed until daemon exposes dispatch methods)
+    // Dispatch
     submitObjective(problemStatement: string, options?: IObjectiveSubmitOptions): Promise<string>;
     submitDispatch(command: IWireDispatchCommand): Promise<string>;
 
-    // Review actions (Wave A: fail closed until daemon exposes review methods)
+    // Review actions
     recordGateVerdict(dispatchId: string, decision: ReviewDecision, reviewedByRole: string): Promise<void>;
     authorizePromotion(dispatchId: string, authorizedByRole: string): Promise<void>;
     enqueueForMerge(dispatchId: string): Promise<void>;
@@ -174,6 +188,7 @@ interface IHarnessService {
 ```
 
 Current merged behavior note: `task.list` is treated as a root-task anchor list only, not a complete global task universe. Atlas expands those roots with `task.tree` and derives one swarm per rooted lineage with `swarmId = rootTaskId`.
+Current merged write note: `writesEnabled` no longer means "all write methods are supported". Consumers should use `supportedWriteMethods` for per-action gating and treat any method not listed there as unavailable on the current daemon connection.
 
 ---
 

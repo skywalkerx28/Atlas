@@ -14,7 +14,10 @@ import {
 	HARNESS_SCHEMA_VERSION,
 } from '../../common/harnessProtocol.js';
 import type {
+	IControlResult,
+	IDispatchSubmitResult,
 	IDaemonHealthState,
+	IEventEmitResult,
 	IFleetDeltaNotification,
 	IFleetSnapshotResult,
 	IFleetWorkerState,
@@ -22,13 +25,17 @@ import type {
 	IHarnessInitializeResult,
 	IMergeListResult,
 	IMergeQueueRecord,
+	IObjectiveSubmitResult,
 	IObjectiveDetail,
 	IObjectiveListResult,
 	IObjectiveRecord,
 	IPingResult,
 	IQueueDispatch,
 	IQueueState,
+	IReviewAuthorizePromotionResult,
 	IReviewCandidateRecord,
+	IReviewEnqueueMergeResult,
+	IReviewGateVerdictResult,
 	IReviewListResult,
 	ISubscriptionAck,
 	ITaskDetail,
@@ -57,12 +64,19 @@ export interface IMockHarnessDaemonOptions {
 	readonly socketPath?: string;
 	readonly initializeResult?: IHarnessInitializeResult;
 	readonly pingResult?: unknown;
+	readonly controlResult?: IControlResult;
+	readonly dispatchSubmitResult?: IDispatchSubmitResult;
+	readonly eventEmitResult?: IEventEmitResult;
 	readonly fleetSnapshotResult?: IFleetSnapshotResult;
 	readonly healthResult?: IHealthResult;
 	readonly objectiveListResult?: IObjectiveListResult;
 	readonly objectiveDetail?: IObjectiveDetail;
+	readonly objectiveSubmitResult?: IObjectiveSubmitResult;
 	readonly reviewListResult?: IReviewListResult;
 	readonly reviewRecord?: IReviewCandidateRecord;
+	readonly reviewGateVerdictResult?: IReviewGateVerdictResult;
+	readonly reviewAuthorizePromotionResult?: IReviewAuthorizePromotionResult;
+	readonly reviewEnqueueMergeResult?: IReviewEnqueueMergeResult;
 	readonly mergeListResult?: IMergeListResult;
 	readonly mergeRecord?: IMergeQueueRecord;
 	readonly taskListResult?: ITaskListResult;
@@ -117,6 +131,18 @@ export function createHarnessPingResult(overrides: Partial<IPingResult> = {}): I
 		uptime_ms: 1_000,
 		active_clients: 1,
 		schema_version: HARNESS_SCHEMA_VERSION,
+		...overrides,
+	};
+}
+
+export function createControlResult(overrides: Partial<IControlResult> = {}): IControlResult {
+	return {
+		rid: 'rid-control-1',
+		action_id: 42,
+		action: 'control.pause',
+		delegated_action: 'pause',
+		dispatch_id: 'disp-1',
+		semantics: 'suspend_in_place_if_running_else_queue_pause',
 		...overrides,
 	};
 }
@@ -203,20 +229,21 @@ export function createObjectiveRecord(
 	overrides: Omit<Partial<IObjectiveRecord>, 'spec'> & { readonly spec?: Partial<IObjectiveRecord['spec']> } = {},
 ): IObjectiveRecord {
 	const { spec: specOverrides, ...recordOverrides } = overrides;
+	const spec: IObjectiveRecord['spec'] = {
+		objective_id: 'OBJ-1',
+		created_at: '2026-03-11T12:00:00.000Z',
+		problem_statement: 'Ship wave c',
+		desired_outcomes: Object.freeze(['ship']),
+		constraints: Object.freeze(['do not fake writes']),
+		context_paths: Object.freeze(['src/vs/sessions']),
+		success_criteria: Object.freeze(['green']),
+		playbook_ids: Object.freeze(['implementation']),
+		priority: 'p1',
+		operator_notes: Object.freeze(['note']),
+		...specOverrides,
+	};
 	return {
-		spec: {
-			objective_id: 'OBJ-1',
-			created_at: '2026-03-11T12:00:00.000Z',
-			problem_statement: 'Ship wave c',
-			desired_outcomes: Object.freeze(['ship']),
-			constraints: Object.freeze(['do not fake writes']),
-			context_paths: Object.freeze(['src/vs/sessions']),
-			success_criteria: Object.freeze(['green']),
-			playbook_ids: Object.freeze(['implementation']),
-			priority: 'p1',
-			operator_notes: Object.freeze(['note']),
-			...specOverrides,
-		} as IObjectiveRecord['spec'],
+		spec,
 		status: 'executing',
 		root_task_id: 'TASK-ROOT-1',
 		resume_count: 0,
@@ -231,6 +258,19 @@ export function createObjectiveListResult(overrides: Partial<IObjectiveListResul
 	return {
 		seq: 5,
 		objectives: Object.freeze([createObjectiveRecord()]),
+		...overrides,
+	};
+}
+
+export function createObjectiveSubmitResult(overrides: Partial<IObjectiveSubmitResult> = {}): IObjectiveSubmitResult {
+	return {
+		rid: 'rid-objective-1',
+		objective_id: 'OBJ-1',
+		root_task_id: 'TASK-ROOT-1',
+		dispatch_id: 'disp-objective-1',
+		idempotency_key: 'objective-idem-1',
+		objective_path: '/tmp/objective.json',
+		packet_path: '/tmp/objective.packet.json',
 		...overrides,
 	};
 }
@@ -314,6 +354,29 @@ export function createReviewListResult(overrides: Partial<IReviewListResult> = {
 	};
 }
 
+export function createReviewGateVerdictResult(overrides: Partial<IReviewGateVerdictResult> = {}): IReviewGateVerdictResult {
+	return {
+		rid: 'rid-review-gate-1',
+		dispatch_id: 'disp-review-1',
+		applied: true,
+		review: createReviewCandidateRecord(),
+		...overrides,
+	};
+}
+
+export function createReviewAuthorizePromotionResult(overrides: Partial<IReviewAuthorizePromotionResult> = {}): IReviewAuthorizePromotionResult {
+	return {
+		rid: 'rid-review-promotion-1',
+		dispatch_id: 'disp-review-1',
+		applied: true,
+		review: createReviewCandidateRecord({
+			promotion_state: 'promotion_authorized',
+			promotion_authorized_by_role: 'axiom-planner',
+		}),
+		...overrides,
+	};
+}
+
 export function createMergeQueueRecord(overrides: Partial<IMergeQueueRecord> = {}): IMergeQueueRecord {
 	return {
 		dispatch_id: 'disp-merge-1',
@@ -352,6 +415,16 @@ export function createMergeListResult(overrides: Partial<IMergeListResult> = {})
 	return {
 		seq: 7,
 		entries: Object.freeze([createMergeQueueRecord()]),
+		...overrides,
+	};
+}
+
+export function createReviewEnqueueMergeResult(overrides: Partial<IReviewEnqueueMergeResult> = {}): IReviewEnqueueMergeResult {
+	return {
+		rid: 'rid-review-merge-1',
+		dispatch_id: 'disp-review-1',
+		inserted: true,
+		entry: createMergeQueueRecord(),
 		...overrides,
 	};
 }
@@ -423,6 +496,27 @@ export function createTaskDetail(overrides: Partial<ITaskDetail> = {}): ITaskDet
 				created_at: '2026-03-11T12:00:30.000Z',
 			},
 		]),
+		...overrides,
+	};
+}
+
+export function createDispatchSubmitResult(overrides: Partial<IDispatchSubmitResult> = {}): IDispatchSubmitResult {
+	return {
+		rid: 'rid-dispatch-1',
+		dispatch_id: 'disp-1',
+		idempotency_key: 'dispatch-idem-1',
+		task_id: 'TASK-ROOT-1',
+		role_id: 'planner',
+		inserted: true,
+		packet_path: '/tmp/dispatch.packet.json',
+		...overrides,
+	};
+}
+
+export function createEventEmitResult(overrides: Partial<IEventEmitResult> = {}): IEventEmitResult {
+	return {
+		rid: 'rid-event-1',
+		event_id: 'evt-1',
 		...overrides,
 	};
 }
@@ -526,6 +620,26 @@ export async function startMockHarnessDaemon(options: IMockHarnessDaemonOptions 
 				return { result: options.initializeResult ?? createHarnessInitializeResult() };
 			case 'daemon.ping':
 				return { result: options.pingResult ?? createHarnessPingResult() };
+			case 'control.pause':
+				return {
+					result: options.controlResult ?? createControlResult(),
+				};
+			case 'control.cancel':
+				return {
+					result: options.controlResult ?? createControlResult({
+						action: 'control.cancel',
+						delegated_action: 'cancel',
+						semantics: 'terminate_and_mark_killed',
+					}),
+				};
+			case 'dispatch.submit':
+				return {
+					result: options.dispatchSubmitResult ?? createDispatchSubmitResult(),
+				};
+			case 'event.emit':
+				return {
+					result: options.eventEmitResult ?? createEventEmitResult(),
+				};
 			case 'fleet.snapshot':
 				return { result: options.fleetSnapshotResult ?? createFleetSnapshotResult() };
 			case 'fleet.subscribe':
@@ -553,6 +667,14 @@ export async function startMockHarnessDaemon(options: IMockHarnessDaemonOptions 
 				return { result: options.objectiveListResult ?? createObjectiveListResult() };
 			case 'objective.get':
 				return { result: options.objectiveDetail ?? createObjectiveDetail() };
+			case 'objective.submit':
+				return { result: options.objectiveSubmitResult ?? createObjectiveSubmitResult() };
+			case 'review.gate_verdict':
+				return { result: options.reviewGateVerdictResult ?? createReviewGateVerdictResult() };
+			case 'review.authorize_promotion':
+				return { result: options.reviewAuthorizePromotionResult ?? createReviewAuthorizePromotionResult() };
+			case 'review.enqueue_merge':
+				return { result: options.reviewEnqueueMergeResult ?? createReviewEnqueueMergeResult() };
 			case 'review.list':
 				return { result: options.reviewListResult ?? createReviewListResult() };
 			case 'review.get':

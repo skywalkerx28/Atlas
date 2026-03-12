@@ -683,7 +683,8 @@ export const enum HarnessConnectionState {
 export interface IHarnessConnectionInfo {
 	readonly state: HarnessConnectionState;
 	readonly mode: 'daemon' | 'polling' | 'none';
-	readonly writesEnabled: boolean;   // Wave A / Wave B: false in all modes until daemon write families exist
+	readonly writesEnabled: boolean;   // Coarse: true only when some daemon writes are truly available
+	readonly supportedWriteMethods: readonly HarnessSupportedWriteMethod[]; // Exact shipped write subset
 	readonly daemonVersion: string | undefined;
 	readonly schemaVersion: string | undefined;
 	readonly grantedCapabilities: readonly string[];
@@ -1148,7 +1149,7 @@ export function mapWireAgent(wire: IWireAgentState): IAgentState {
 
 **Wave A was intentionally narrow.** The initial bridge only consumed `initialize`, `shutdown`, `daemon.ping`, `fleet.snapshot`, `fleet.subscribe`, and `fleet.unsubscribe`, while keeping `writesEnabled: false` even in daemon mode.
 
-**Current merged Wave C bridge truthfully consumes the richer read-only daemon surface.** Atlas now reads:
+**Current merged Wave D bridge truthfully consumes the richer read surface plus the shipped daemon write subset.** Atlas now reads:
 
 - `initialize` with `fabric_identity`
 - `daemon.ping`
@@ -1161,7 +1162,19 @@ export function mapWireAgent(wire: IWireAgentState): IAgentState {
 
 Atlas validates `initialize.fabric_identity.repo_root` against the opened workspace and fails closed on mismatch. `task.list` is treated as root-task anchors only, `task.tree` is the rooted lineage primitive, and Phase 3 now derives `IHarnessService.swarms` from that rooted state. Polling fallback remains intentionally narrow and read-only: it still only surfaces fleet and derived health from SQLite, because mirroring every daemon family locally would create a second privileged control plane.
 
-The daemon branch currently exposes a few additional read methods (`cost.get`, `agent.activity.get`, and `transcript.get`) that Atlas still leaves intentionally unimplemented in Wave C. Those remain explicit empty/default surfaces until the next bridge wave adopts them truthfully.
+The daemon branch currently exposes a few additional read methods (`cost.get`, `agent.activity.get`, and `transcript.get`) that Atlas still leaves intentionally unimplemented in Wave D. Those remain explicit empty/default surfaces until the next bridge wave adopts them truthfully.
+
+Atlas now delegates only the shipped daemon write subset:
+
+- `control.pause`
+- `control.cancel`
+- `dispatch.submit`
+- `objective.submit`
+- `review.gate_verdict`
+- `review.authorize_promotion`
+- `review.enqueue_merge`
+
+Unshipped methods such as `control.resume`, `control.steer`, `pauseAll`, and `resumeAll` remain explicit fail-closed errors. `writesEnabled` is now a coarse "some daemon writes are available" bit, while `supportedWriteMethods` reports the exact subset the connected daemon both exposes and grants.
 
 ```typescript
 // electron-browser/harnessService.ts
@@ -1182,11 +1195,12 @@ export class DesktopHarnessService extends Disposable implements IHarnessService
             this._connectionState.set({
                 state: HarnessConnectionState.Connected,
                 mode: 'daemon',
-                writesEnabled: false, // Wave A through Wave C: daemon is still read-only from Atlas
+                writesEnabled: supportedWriteMethods.length > 0,
+                supportedWriteMethods,
                 ...
             });
 
-            // Current merged bridge consumes the read-only daemon surface that actually exists.
+            // Current merged bridge consumes the daemon surface that actually exists.
             await this.daemonClient.request('daemon.ping', {});
             this.daemonClient.onNotification((method, params) => {
                 this.handleNotification(method, params);
@@ -1216,6 +1230,7 @@ export class DesktopHarnessService extends Disposable implements IHarnessService
                 state: HarnessConnectionState.Connected,
                 mode: 'polling',
                 writesEnabled: false,  // polling mode: read-only
+                supportedWriteMethods: [],
                 ...
             });
             this.sqlitePoller.start();
@@ -1244,34 +1259,35 @@ export class DesktopHarnessService extends Disposable implements IHarnessService
         throw new Error('Harness daemon required; Atlas is in read-only mode.');
     }
 
-    // Write methods still fail closed because the daemon does not yet expose them.
     async pauseAgent(dispatchId: string): Promise<void> {
-        this.failClosedWrite('control methods');
+        await this.daemonClient.request('control.pause', { dispatch_id: dispatchId });
     }
 
     async recordGateVerdict(dispatchId: string, decision: ReviewDecision, reviewedByRole: string): Promise<void> {
-        this.failClosedWrite('review methods');
+        await this.daemonClient.request('review.gate_verdict', { dispatch_id: dispatchId, decision, reviewed_by_role: reviewedByRole });
     }
 
     async authorizePromotion(dispatchId: string, authorizedByRole: string): Promise<void> {
-        this.failClosedWrite('promotion methods');
+        await this.daemonClient.request('review.authorize_promotion', { dispatch_id: dispatchId, authorized_by_role: authorizedByRole });
     }
 
     async enqueueForMerge(dispatchId: string): Promise<void> {
-        this.failClosedWrite('merge methods');
+        await this.daemonClient.request('review.enqueue_merge', { dispatch_id: dispatchId });
     }
 
-    // ... all other write methods also fail closed in Wave A
+    // Unsupported or unshipped write methods still fail closed.
 }
 ```
 
-The UI layer uses `connectionState.writesEnabled` to disable action buttons whenever writes are unavailable:
+The UI layer should use `connectionState.writesEnabled` as a coarse "some actions are available" signal and `connectionState.supportedWriteMethods` for per-action gating:
 
 ```typescript
 // In any view that has write actions:
-const canWrite = this.harnessService.connectionState.map(c => c.writesEnabled);
-// Disable "Approve", "Pause", "Cancel" buttons when canWrite is false
-// Show "Writes unavailable in current Wave A bridge" hint in the UI
+const connection = this.harnessService.connectionState;
+const canPause = connection.map(c => c.supportedWriteMethods.includes('control.pause'));
+const canMerge = connection.map(c => c.supportedWriteMethods.includes('review.enqueue_merge'));
+// Disable only the actions that are not listed in supportedWriteMethods.
+// If writesEnabled is false entirely, show the read-only daemon/polling hint.
 ```
 
 #### 2.4 — Browser stub
@@ -1319,7 +1335,7 @@ registerSingleton(IHarnessService, BrowserHarnessService, InstantiationType.Dela
 - TypeScript compilation clean
 - Layering check passes (new files in `vs/sessions/services/`, imports only from `vs/base/`, `vs/platform/`, `vs/sessions/common/model/`)
 - Unit test: mock daemon socket, verify initialize handshake, verify notification → observable update flow
-- Integration test: start `axiom-harness serve`, open Atlas window, verify connection state shows "Connected (daemon)" with `writesEnabled: false`
+- Integration test: start `axiom-harness serve`, open Atlas window, verify connection state shows "Connected (daemon)" with truthful `writesEnabled` / `supportedWriteMethods` based on the daemon's granted capability subset
 - Integration test: verify `initialize.fabric_identity` is captured and validated against the opened workspace, and cross-project mismatch fails closed without degrading to polling
 - Integration test: verify fleet, health, objective, review, merge, and rooted task state populate from the daemon methods above
 - Integration test: verify `task.list` is treated as a root-task anchor list only and Atlas expands rooted lineage through `task.tree`
@@ -1788,7 +1804,7 @@ Content layout:
 
 The diff rendering reuses the existing `ChangesViewPane` contribution — it already renders file diffs with inline stats. Extend it to accept a task/dispatch scope parameter instead of always showing the active session's changes.
 
-All write actions are disabled when `connectionState.writesEnabled` is false. In Wave A this is true in daemon mode, polling mode, and the browser stub, so the UI should explain that the current bridge is read-only rather than blaming polling alone.
+All write actions should key off `connectionState.supportedWriteMethods`. If `writesEnabled` is false, the bridge is read-only in the current mode. If `writesEnabled` is true, only the specific shipped methods in `supportedWriteMethods` should be enabled.
 
 #### 6.5 — Batch review controller
 
@@ -1822,7 +1838,7 @@ Counter in the review editor header: "3 of 7 reviews remaining."
 - In-flight review streams live transcript and updates diff in real-time
 - Post-review shows **gate state** (Tier 2) as the authoritative verdict, advisory score (Tier 1) as a labeled hint — never conflated
 - Gate actions follow the three-step flow: verdict → promotion → merge
-- All write actions disabled with a Wave A read-only hint when writes are unavailable
+- Only the actions whose daemon methods are absent from `supportedWriteMethods` stay disabled; read-only modes still show the daemon/polling hint when `writesEnabled` is false
 - Batch review auto-advances; counter updates correctly
 - Review badges in left rail update when gate states change
 
@@ -2278,7 +2294,7 @@ sessions/contrib/
 | Swarm derivation too slow for large task graphs | UI lag on reactive updates | Memoize derivation, debounce at 100ms, compute in web worker if needed |
 | DAG rendering performance | Janky objective boards | Start with SVG for small graphs (<20 nodes), switch to canvas if needed |
 | IHarnessService interface churn | Cascading changes across consumers | Phase 0a + 0b get thorough review before any consumer is built |
-| Wave A read-only bridge UX | Operator frustration (cannot act yet) | Clear "Writes unavailable in current Wave A bridge" messaging; daemon and polling still surface fleet state truthfully |
+| Partial daemon write surface UX | Operator confusion about which actions are really live | Gate each action on `supportedWriteMethods`, keep unsupported methods explicit, and keep polling/browser modes clearly read-only |
 | Review model confusion (advisory vs authoritative) | Operator makes decisions on heuristic data | Advisory scores explicitly labeled as "heuristic" in UI; gate state clearly distinguished as "authoritative verdict" |
 | Multi-window state sync | Stale data in secondary windows | Each window has its own IHarnessService connected to the same daemon — daemon handles state, not Atlas |
 | Fork cleanup conflicts with new code | Merge conflicts | Coordinate with cleanup agent — new code goes in `sessions/`, cleanup targets `workbench/` and `extensions/` — orthogonal directories |

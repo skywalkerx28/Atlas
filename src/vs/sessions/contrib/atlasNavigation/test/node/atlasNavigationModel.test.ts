@@ -431,6 +431,7 @@ function createConnectionState(overrides: Partial<IHarnessConnectionInfo> = {}):
 		state: HarnessConnectionState.Connected,
 		mode: 'daemon',
 		writesEnabled: false,
+		supportedWriteMethods: Object.freeze([]),
 		daemonVersion: '0.1.0-test',
 		schemaVersion: '2026-03-01',
 		grantedCapabilities: Object.freeze(['read']),
