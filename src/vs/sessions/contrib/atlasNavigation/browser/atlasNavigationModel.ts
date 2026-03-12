@@ -142,17 +142,148 @@ export interface IAtlasShellModel {
 	readonly items: readonly IAtlasShellItem[];
 }
 
-export interface IReviewWorkspaceLink {
+export interface IEntityWorkspaceLink {
+	readonly kind: 'entity';
 	readonly id: string;
 	readonly label: string;
 	readonly target: AtlasModel.ISelectedEntity;
 }
 
-export interface IReviewWorkspaceDetail {
+export interface ISectionWorkspaceLink {
+	readonly kind: 'section';
+	readonly id: string;
+	readonly label: string;
+	readonly section: NavigationSection;
+}
+
+export type IAtlasWorkspaceLink = IEntityWorkspaceLink | ISectionWorkspaceLink;
+
+export interface IAtlasWorkspaceDetail {
 	readonly label: string;
 	readonly value: string;
 	readonly attentionLevel: AttentionLevel | undefined;
 }
+
+export interface ITaskWorkspaceSwarmCard {
+	readonly id: string;
+	readonly swarmId: string;
+	readonly title: string;
+	readonly subtitle: string;
+	readonly phaseLabel: string;
+	readonly attentionLevel: AttentionLevel;
+	readonly taskCount: number;
+	readonly agentCount: number;
+	readonly reviewCount: number;
+	readonly selected: boolean;
+	readonly target: AtlasModel.ISelectedEntity;
+}
+
+export interface ITaskWorkspaceTaskEntry {
+	readonly id: string;
+	readonly taskId: string;
+	readonly summary: string;
+	readonly statusLabel: string;
+	readonly roleLabel: string;
+	readonly attentionLevel: AttentionLevel;
+	readonly depth: number;
+	readonly selected: boolean;
+	readonly isRoot: boolean;
+	readonly dispatchId: string | undefined;
+	readonly agentCount: number;
+	readonly pressureSummary: string | undefined;
+	readonly target: AtlasModel.ISelectedEntity;
+}
+
+export interface ITaskWorkspaceAgentEntry {
+	readonly id: string;
+	readonly dispatchId: string;
+	readonly label: string;
+	readonly subtitle: string;
+	readonly status: string;
+	readonly attentionLevel: AttentionLevel;
+	readonly target: AtlasModel.ISelectedEntity;
+}
+
+export interface ITaskWorkspacePressureEntry {
+	readonly id: string;
+	readonly label: string;
+	readonly subtitle: string;
+	readonly status: string;
+	readonly kind: ReviewTargetKind;
+	readonly attentionLevel: AttentionLevel;
+	readonly target: AtlasModel.ISelectedEntity;
+}
+
+export interface ITaskWorkspaceModel {
+	readonly mode: 'overview' | 'swarm';
+	readonly title: string;
+	readonly subtitle: string;
+	readonly emptyMessage: string;
+	readonly stats: readonly IAtlasShellStat[];
+	readonly details: readonly IAtlasWorkspaceDetail[];
+	readonly links: readonly IAtlasWorkspaceLink[];
+	readonly swarmCards: readonly ITaskWorkspaceSwarmCard[];
+	readonly taskEntries: readonly ITaskWorkspaceTaskEntry[];
+	readonly agentEntries: readonly ITaskWorkspaceAgentEntry[];
+	readonly pressureEntries: readonly ITaskWorkspacePressureEntry[];
+	readonly selectedSwarmId: string | undefined;
+	readonly selectedTaskId: string | undefined;
+}
+
+export interface IAgentWorkspaceItem {
+	readonly id: string;
+	readonly dispatchId: string;
+	readonly title: string;
+	readonly subtitle: string;
+	readonly statusKind: AtlasModel.AgentStatus;
+	readonly status: string;
+	readonly attentionLevel: AttentionLevel;
+	readonly heartbeatLabel: string;
+	readonly activityLabel: string;
+	readonly taskId: string;
+	readonly swarmId: string | undefined;
+	readonly worktreePath: string | undefined;
+	readonly pressureSummary: string | undefined;
+	readonly selected: boolean;
+	readonly target: AtlasModel.ISelectedEntity;
+}
+
+export interface IAgentWorkspaceGroup {
+	readonly id: string;
+	readonly label: string;
+	readonly summary: string;
+	readonly count: number;
+	readonly attentionLevel: AttentionLevel;
+	readonly emptyMessage: string;
+	readonly items: readonly IAgentWorkspaceItem[];
+}
+
+export interface IAgentWorkspacePressureEntry {
+	readonly id: string;
+	readonly label: string;
+	readonly subtitle: string;
+	readonly status: string;
+	readonly kind: ReviewTargetKind;
+	readonly attentionLevel: AttentionLevel;
+	readonly target: AtlasModel.ISelectedEntity;
+}
+
+export interface IAgentWorkspaceModel {
+	readonly mode: 'overview' | 'agent';
+	readonly title: string;
+	readonly subtitle: string;
+	readonly emptyMessage: string;
+	readonly stats: readonly IAtlasShellStat[];
+	readonly details: readonly IAtlasWorkspaceDetail[];
+	readonly links: readonly IAtlasWorkspaceLink[];
+	readonly pressureEntries: readonly IAgentWorkspacePressureEntry[];
+	readonly groups: readonly IAgentWorkspaceGroup[];
+	readonly selectedDispatchId: string | undefined;
+}
+
+export type IReviewWorkspaceLink = IAtlasWorkspaceLink;
+
+export type IReviewWorkspaceDetail = IAtlasWorkspaceDetail;
 
 export interface IReviewWorkspaceEntry {
 	readonly id: string;
@@ -519,13 +650,13 @@ export function buildReviewWorkspaceModel(
 
 	const links: IReviewWorkspaceLink[] = [];
 	if (swarm) {
-		links.push({ id: `swarm:${swarm.swarmId}`, label: 'Open swarm', target: { kind: EntityKind.Swarm, id: swarm.swarmId } });
+		links.push({ kind: 'entity', id: `swarm:${swarm.swarmId}`, label: 'Open swarm', target: swarmTarget(swarm.swarmId) });
 	}
 	if (taskId) {
-		links.push({ id: `task:${taskId}`, label: 'Open task', target: { kind: EntityKind.Task, id: taskId } });
+		links.push({ kind: 'entity', id: `task:${taskId}`, label: 'Open task', target: taskTarget(taskId) });
 	}
 	if (agent) {
-		links.push({ id: `agent:${agent.dispatchId}`, label: 'Open agent', target: { kind: EntityKind.Agent, id: agent.dispatchId } });
+		links.push({ kind: 'entity', id: `agent:${agent.dispatchId}`, label: 'Open agent', target: agentTarget(agent.dispatchId) });
 	}
 
 	const readOnlyMessage = buildReadOnlyMessage(state.connection, gate, merge);
@@ -554,6 +685,181 @@ export function buildReviewWorkspaceModel(
 		readOnlyMessage,
 		selectedDispatchId,
 		selectedTargetKind,
+	};
+}
+
+export function buildTasksWorkspaceModel(
+	selection: INavigationSelection,
+	state: IAtlasStateSnapshot,
+	now: number = Date.now(),
+): ITaskWorkspaceModel {
+	const selectedSwarm = resolveSelectedSwarm(selection, state.swarms);
+	const selectedTaskId = selection.entity?.kind === EntityKind.Task
+		? selection.entity.id
+		: selectedSwarm?.rootTaskId;
+	const swarmById = new Map(state.swarms.map(swarm => [swarm.swarmId, swarm] as const));
+	const swarmCards = buildTaskNavigationItems(state.swarms).map<ITaskWorkspaceSwarmCard>(item => ({
+		id: item.swarmId,
+		swarmId: item.swarmId,
+		title: item.title,
+		subtitle: item.subtitle,
+		phaseLabel: formatStateLabel(item.phase),
+		attentionLevel: item.attentionLevel,
+		taskCount: item.taskCount,
+		agentCount: item.agentCount,
+		reviewCount: (swarmById.get(item.swarmId)?.reviewDispatchIds.length ?? 0) + (swarmById.get(item.swarmId)?.mergeDispatchIds.length ?? 0),
+		selected: item.swarmId === selectedSwarm?.swarmId,
+		target: swarmTarget(item.swarmId),
+	}));
+
+	if (!selectedSwarm) {
+		return {
+			mode: 'overview',
+			title: 'Tasks',
+			subtitle: 'Swarm-rooted work across the current harness fabric, with objective metadata attached only when the rooted lineage proves it.',
+			emptyMessage: emptyMessageForConnection(state.connection, 'No rooted swarms are available for this workspace yet.'),
+			stats: [
+				stat('Swarms', String(state.swarms.length)),
+				stat('Critical', String(state.swarms.filter(swarm => swarm.attentionLevel === AttentionLevel.Critical).length), AttentionLevel.Critical),
+				stat('Needs action', String(state.swarms.filter(swarm => swarm.attentionLevel === AttentionLevel.NeedsAction).length), AttentionLevel.NeedsAction),
+				stat('Active agents', String(state.fleet.activeCount), state.fleet.activeCount > 0 ? AttentionLevel.Active : undefined),
+			],
+			details: Object.freeze([]),
+			links: Object.freeze([
+				sectionLink('agents', 'Open Agents', NavigationSection.Agents),
+				sectionLink('reviews', 'Open Reviews', NavigationSection.Reviews),
+				sectionLink('fleet', 'Open Fleet', NavigationSection.Fleet),
+			]),
+			swarmCards: Object.freeze(swarmCards),
+			taskEntries: Object.freeze([]),
+			agentEntries: Object.freeze([]),
+			pressureEntries: Object.freeze([]),
+			selectedSwarmId: undefined,
+			selectedTaskId: undefined,
+		};
+	}
+
+	const objective = selectedSwarm.objectiveId
+		? state.objectives.find(candidate => candidate.objectiveId === selectedSwarm.objectiveId)
+		: state.objectives.find(candidate => candidate.rootTaskId === selectedSwarm.rootTaskId);
+	const taskEntries = buildTaskWorkspaceTaskEntries(selectedSwarm, state.tasks, state.fleet.agents, state.reviewGates, state.mergeQueue, selectedTaskId);
+	const agentEntries = buildTaskWorkspaceAgentEntries(selectedSwarm, state.fleet.agents, now);
+	const pressureEntries = buildTaskWorkspacePressureEntries(selectedSwarm, state.reviewGates, state.mergeQueue);
+	const links: IAtlasWorkspaceLink[] = [
+		sectionLink('agents', 'Browse Agents', NavigationSection.Agents),
+		sectionLink('reviews', 'Browse Reviews', NavigationSection.Reviews),
+		sectionLink('fleet', 'Open Fleet', NavigationSection.Fleet),
+	];
+	if (objective) {
+		links.unshift(entityLink(`objective:${objective.objectiveId}`, 'Open Objective', objectiveTarget(objective.objectiveId)));
+	}
+
+	return {
+		mode: 'swarm',
+		title: selectedSwarm.objectiveProblemStatement ?? objective?.problemStatement ?? selectedSwarm.rootTaskId,
+		subtitle: `Root task ${selectedSwarm.rootTaskId}`,
+		emptyMessage: 'No rooted task lineage is currently available for this swarm.',
+		stats: [
+			stat('Phase', formatStateLabel(selectedSwarm.phase), selectedSwarm.attentionLevel),
+			stat('Root status', formatStateLabel(selectedSwarm.rootTaskStatus), taskEntries.find(entry => entry.taskId === selectedSwarm.rootTaskId)?.attentionLevel),
+			stat('Tasks', String(selectedSwarm.taskIds.length)),
+			stat('Agents', String(selectedSwarm.agentDispatchIds.length), selectedSwarm.agentDispatchIds.length > 0 ? AttentionLevel.Active : undefined),
+			stat('Review pressure', String(selectedSwarm.reviewDispatchIds.length + selectedSwarm.mergeDispatchIds.length), selectedSwarm.reviewNeeded || selectedSwarm.mergeBlocked ? AttentionLevel.NeedsAction : undefined),
+		],
+		details: Object.freeze([
+			detail('Swarm', selectedSwarm.swarmId, selectedSwarm.attentionLevel),
+			detail('Objective', objective ? `${objective.objectiveId} • ${objective.problemStatement}` : 'Ad-hoc root task', objective?.attentionLevel),
+			detail('Created', formatRecencyLabel(now, selectedSwarm.createdAt), undefined),
+			detail('Updated', formatRecencyLabel(now, selectedSwarm.updatedAt), undefined),
+			detail('Failures', selectedSwarm.hasFailures ? 'Detected' : 'None', selectedSwarm.hasFailures ? AttentionLevel.Critical : undefined),
+			detail('Blocked tasks', selectedSwarm.hasBlockedTasks ? 'Present' : 'None', selectedSwarm.hasBlockedTasks ? AttentionLevel.NeedsAction : undefined),
+		]),
+		links: Object.freeze(links),
+		swarmCards: Object.freeze(swarmCards),
+		taskEntries: Object.freeze(taskEntries),
+		agentEntries: Object.freeze(agentEntries),
+		pressureEntries: Object.freeze(pressureEntries),
+		selectedSwarmId: selectedSwarm.swarmId,
+		selectedTaskId,
+	};
+}
+
+export function buildAgentsWorkspaceModel(
+	selection: INavigationSelection,
+	state: IAtlasStateSnapshot,
+	now: number = Date.now(),
+): IAgentWorkspaceModel {
+	const selectedDispatchId = selection.entity?.kind === EntityKind.Agent ? selection.entity.id : undefined;
+	const selectedAgent = selectedDispatchId
+		? state.fleet.agents.find(agent => agent.dispatchId === selectedDispatchId)
+		: undefined;
+	const groups = buildAgentWorkspaceGroups(state, selectedAgent, now);
+
+	if (!selectedAgent) {
+		return {
+			mode: 'overview',
+			title: 'Agents',
+			subtitle: 'Dispatch-linked execution across live agents, with work rooted back to swarms and tasks instead of a flat console.',
+			emptyMessage: emptyMessageForConnection(state.connection, 'No agents are currently visible in fleet state.'),
+			stats: [
+				stat('Running', String(state.fleet.activeCount), state.fleet.activeCount > 0 ? AttentionLevel.Active : undefined),
+				stat('Blocked', String(state.fleet.blockedCount), state.fleet.blockedCount > 0 ? AttentionLevel.NeedsAction : undefined),
+				stat('Failed', String(state.fleet.failedCount), state.fleet.failedCount > 0 ? AttentionLevel.Critical : undefined),
+				stat('Idle', String(state.fleet.idleCount), state.fleet.idleCount > 0 ? AttentionLevel.Idle : undefined),
+			],
+			details: Object.freeze([]),
+			links: Object.freeze([
+				sectionLink('tasks', 'Browse Tasks', NavigationSection.Tasks),
+				sectionLink('reviews', 'Browse Reviews', NavigationSection.Reviews),
+				sectionLink('fleet', 'Open Fleet', NavigationSection.Fleet),
+			]),
+			pressureEntries: Object.freeze([]),
+			groups: Object.freeze(groups),
+			selectedDispatchId: undefined,
+		};
+	}
+
+	const selectedSwarm = state.swarms.find(swarm => swarm.taskIds.includes(selectedAgent.taskId));
+	const gate = state.reviewGates.find(entry => entry.dispatchId === selectedAgent.dispatchId && isReviewOutstanding(entry));
+	const merge = state.mergeQueue.find(entry => entry.dispatchId === selectedAgent.dispatchId && isMergeAttentionEntry(entry));
+	const links: IAtlasWorkspaceLink[] = [
+		entityLink(`task:${selectedAgent.taskId}`, 'Open Task', taskTarget(selectedAgent.taskId)),
+		sectionLink('fleet', 'Open Fleet', NavigationSection.Fleet),
+	];
+	if (selectedSwarm) {
+		links.unshift(entityLink(`swarm:${selectedSwarm.swarmId}`, 'Open Swarm', swarmTarget(selectedSwarm.swarmId)));
+	}
+	if (gate) {
+		links.push(entityLink(reviewItemId(gate.dispatchId, ReviewTargetKind.Gate), 'Open Gate', { kind: EntityKind.Review, id: gate.dispatchId, reviewTargetKind: ReviewTargetKind.Gate }));
+	}
+	if (merge) {
+		links.push(entityLink(reviewItemId(merge.dispatchId, ReviewTargetKind.Merge), 'Open Merge', { kind: EntityKind.Review, id: merge.dispatchId, reviewTargetKind: ReviewTargetKind.Merge }));
+	}
+
+	return {
+		mode: 'agent',
+		title: selectedAgent.roleId,
+		subtitle: `Dispatch ${selectedAgent.dispatchId}`,
+		emptyMessage: 'No related agents are currently visible for this dispatch.',
+		stats: [
+			stat('Status', formatStateLabel(selectedAgent.status), selectedAgent.attentionLevel),
+			stat('Heartbeat', formatRecencyLabel(now, selectedAgent.lastHeartbeat)),
+			stat('Task', selectedAgent.taskId),
+			stat('Swarm', selectedSwarm?.swarmId ?? 'Unmapped'),
+			stat('Pressure', String(Number(gate !== undefined) + Number(merge !== undefined)), gate || merge ? highestAttention([gate?.attentionLevel ?? AttentionLevel.Idle, merge?.attentionLevel ?? AttentionLevel.Idle]) : undefined),
+		],
+		details: Object.freeze([
+			detail('Role', selectedAgent.roleId, undefined),
+			detail('Activity', selectedAgent.lastActivity ?? 'No recent activity reported', undefined),
+			detail('In state', formatDurationLabel(selectedAgent.timeInState), undefined),
+			detail('Started', formatRecencyLabel(now, selectedAgent.startedAt), undefined),
+			detail('Worktree', selectedAgent.worktreePath ?? 'No worktree reported', undefined),
+			detail('Cost spent', String(selectedAgent.costSpent), selectedAgent.costSpent > 0 ? AttentionLevel.Active : undefined),
+		]),
+		links: Object.freeze(links),
+		pressureEntries: Object.freeze(buildAgentWorkspacePressureEntries(selectedAgent, state.reviewGates, state.mergeQueue)),
+		groups: Object.freeze(groups),
+		selectedDispatchId: selectedAgent.dispatchId,
 	};
 }
 
@@ -855,6 +1161,351 @@ function buildFleetCommandGroup(
 		emptyMessage,
 		items,
 	};
+}
+
+function resolveSelectedSwarm(
+	selection: INavigationSelection,
+	swarms: readonly ISwarmState[],
+): ISwarmState | undefined {
+	const entity = selection.entity;
+	return entity?.kind === EntityKind.Swarm
+		? swarms.find(swarm => swarm.swarmId === entity.id)
+		: entity?.kind === EntityKind.Task
+			? swarms.find(swarm => swarm.taskIds.includes(entity.id))
+			: entity?.kind === EntityKind.Objective
+				? swarms.find(swarm => swarm.objectiveId === entity.id)
+				: undefined;
+}
+
+function buildTaskWorkspaceTaskEntries(
+	swarm: ISwarmState,
+	tasks: readonly ITaskState[],
+	agents: readonly IAgentState[],
+	reviewGates: readonly IReviewGateState[],
+	mergeQueue: readonly AtlasModel.IMergeEntry[],
+	selectedTaskId: string | undefined,
+): readonly ITaskWorkspaceTaskEntry[] {
+	const taskMap = new Map(tasks
+		.filter(task => swarm.taskIds.includes(task.taskId))
+		.map(task => [task.taskId, task] as const));
+	const childrenByParent = new Map<string | undefined, ITaskState[]>();
+	for (const task of taskMap.values()) {
+		const bucket = childrenByParent.get(task.parentTaskId) ?? [];
+		bucket.push(task);
+		childrenByParent.set(task.parentTaskId, bucket);
+	}
+	for (const bucket of childrenByParent.values()) {
+		bucket.sort((left, right) => left.enqueuedAt - right.enqueuedAt || left.taskId.localeCompare(right.taskId));
+	}
+
+	const agentCountByTaskId = new Map<string, number>();
+	for (const agent of agents) {
+		agentCountByTaskId.set(agent.taskId, (agentCountByTaskId.get(agent.taskId) ?? 0) + 1);
+	}
+
+	const gateCountByTaskId = new Map<string, number>();
+	for (const gate of reviewGates.filter(isReviewOutstanding)) {
+		gateCountByTaskId.set(gate.taskId, (gateCountByTaskId.get(gate.taskId) ?? 0) + 1);
+	}
+
+	const mergeCountByTaskId = new Map<string, number>();
+	for (const entry of mergeQueue.filter(isMergeAttentionEntry)) {
+		mergeCountByTaskId.set(entry.taskId, (mergeCountByTaskId.get(entry.taskId) ?? 0) + 1);
+	}
+
+	const ordered: ITaskWorkspaceTaskEntry[] = [];
+	const visited = new Set<string>();
+	const visit = (task: ITaskState, depth: number): void => {
+		if (visited.has(task.taskId)) {
+			return;
+		}
+		visited.add(task.taskId);
+
+		const pressureParts: string[] = [];
+		const gateCount = gateCountByTaskId.get(task.taskId) ?? 0;
+		const mergeCount = mergeCountByTaskId.get(task.taskId) ?? 0;
+		if (gateCount > 0) {
+			pressureParts.push(`${gateCount} gate${gateCount === 1 ? '' : 's'}`);
+		}
+		if (mergeCount > 0) {
+			pressureParts.push(`${mergeCount} merge${mergeCount === 1 ? '' : 's'}`);
+		}
+
+		ordered.push({
+			id: task.taskId,
+			taskId: task.taskId,
+			summary: task.summary || task.taskId,
+			statusLabel: formatStateLabel(task.status),
+			roleLabel: task.roleId,
+			attentionLevel: task.attentionLevel,
+			depth,
+			selected: task.taskId === selectedTaskId,
+			isRoot: task.taskId === swarm.rootTaskId,
+			dispatchId: task.dispatchId,
+			agentCount: agentCountByTaskId.get(task.taskId) ?? 0,
+			pressureSummary: pressureParts.length > 0 ? pressureParts.join(' • ') : undefined,
+			target: taskTarget(task.taskId),
+		});
+
+		for (const child of childrenByParent.get(task.taskId) ?? []) {
+			visit(child, depth + 1);
+		}
+	};
+
+	const rootTask = taskMap.get(swarm.rootTaskId);
+	if (rootTask) {
+		visit(rootTask, 0);
+	}
+
+	for (const task of [...taskMap.values()].sort((left, right) => left.enqueuedAt - right.enqueuedAt || left.taskId.localeCompare(right.taskId))) {
+		visit(task, task.taskId === swarm.rootTaskId ? 0 : 1);
+	}
+
+	return Object.freeze(ordered);
+}
+
+function buildTaskWorkspaceAgentEntries(
+	swarm: ISwarmState,
+	agents: readonly IAgentState[],
+	now: number,
+): readonly ITaskWorkspaceAgentEntry[] {
+	return Object.freeze([...agents]
+		.filter(agent => swarm.taskIds.includes(agent.taskId))
+		.sort((left, right) =>
+			right.attentionLevel - left.attentionLevel
+			|| right.lastHeartbeat - left.lastHeartbeat
+			|| left.dispatchId.localeCompare(right.dispatchId))
+		.map(agent => ({
+			id: agent.dispatchId,
+			dispatchId: agent.dispatchId,
+			label: agent.roleId,
+			subtitle: `${agent.taskId} • ${formatRecencyLabel(now, agent.lastHeartbeat)}`,
+			status: formatStateLabel(agent.status),
+			attentionLevel: agent.attentionLevel,
+			target: agentTarget(agent.dispatchId),
+		})));
+}
+
+function buildTaskWorkspacePressureEntries(
+	swarm: ISwarmState,
+	reviewGates: readonly IReviewGateState[],
+	mergeQueue: readonly AtlasModel.IMergeEntry[],
+): readonly ITaskWorkspacePressureEntry[] {
+	const entries: ITaskWorkspacePressureEntry[] = [
+		...reviewGates
+			.filter(gate => swarm.taskIds.includes(gate.taskId) && isReviewOutstanding(gate))
+			.map(gate => ({
+				id: reviewItemId(gate.dispatchId, ReviewTargetKind.Gate),
+				label: gate.roleId,
+				subtitle: gate.taskId,
+				status: formatStateLabel(gate.reviewState),
+				kind: ReviewTargetKind.Gate,
+				attentionLevel: gate.attentionLevel,
+				target: { kind: EntityKind.Review, id: gate.dispatchId, reviewTargetKind: ReviewTargetKind.Gate },
+			})),
+		...mergeQueue
+			.filter(entry => swarm.taskIds.includes(entry.taskId) && isMergeAttentionEntry(entry))
+			.map(entry => ({
+				id: reviewItemId(entry.dispatchId, ReviewTargetKind.Merge),
+				label: basename(entry.worktreePath) || entry.candidateBranch,
+				subtitle: entry.taskId,
+				status: formatStateLabel(entry.status),
+				kind: ReviewTargetKind.Merge,
+				attentionLevel: entry.attentionLevel,
+				target: { kind: EntityKind.Review, id: entry.dispatchId, reviewTargetKind: ReviewTargetKind.Merge },
+			})),
+	];
+
+	return Object.freeze(entries.sort((left, right) =>
+		right.attentionLevel - left.attentionLevel
+		|| left.kind.localeCompare(right.kind)
+		|| left.id.localeCompare(right.id)));
+}
+
+function buildAgentWorkspaceGroups(
+	state: IAtlasStateSnapshot,
+	selectedAgent: IAgentState | undefined,
+	now: number,
+): readonly IAgentWorkspaceGroup[] {
+	const items = buildAgentWorkspaceItems(state.fleet.agents, state.swarms, state.reviewGates, state.mergeQueue, now, selectedAgent?.dispatchId);
+
+	if (!selectedAgent) {
+		return Object.freeze([
+			buildAgentWorkspaceGroup(
+				'running',
+				'Running',
+				'Dispatches actively executing or spawning on the current harness fabric.',
+				items.filter(item => isRunningAgentStatus(item.statusKind)),
+				'No agents are currently running.',
+			),
+			buildAgentWorkspaceGroup(
+				'blocked',
+				'Blocked',
+				'Dispatches waiting on dependencies, external state, or human follow-up.',
+				items.filter(item => item.statusKind === AgentStatus.Blocked),
+				'No agents are currently blocked.',
+			),
+			buildAgentWorkspaceGroup(
+				'failed',
+				'Failed',
+				'Dispatches that failed closed or timed out and need operator attention.',
+				items.filter(item => isFailedAgentStatus(item.statusKind)),
+				'No failed or timed-out agents are visible.',
+			),
+			buildAgentWorkspaceGroup(
+				'idle',
+				'Idle / recent',
+				'Dispatches with no active execution in flight but still visible in fleet state.',
+				items.filter(item => item.statusKind === AgentStatus.Idle || item.statusKind === AgentStatus.Completed),
+				'No idle or recently completed agents are visible.',
+			),
+		]);
+	}
+
+	const selectedSwarm = state.swarms.find(swarm => swarm.taskIds.includes(selectedAgent.taskId));
+	return Object.freeze([
+		buildAgentWorkspaceGroup(
+			'same-task',
+			'Same task',
+			'Other visible agents currently attached to the same task lineage node.',
+			items.filter(item => item.dispatchId !== selectedAgent.dispatchId && item.taskId === selectedAgent.taskId),
+			'No other visible agents are attached to this task.',
+		),
+		buildAgentWorkspaceGroup(
+			'same-swarm',
+			'Same swarm',
+			'Other visible agents rooted in the same swarm but attached to different tasks.',
+			items.filter(item =>
+				item.dispatchId !== selectedAgent.dispatchId
+				&& item.swarmId !== undefined
+				&& item.swarmId === selectedSwarm?.swarmId
+				&& item.taskId !== selectedAgent.taskId),
+			'No other visible agents are currently mapped to this swarm.',
+		),
+	]);
+}
+
+function buildAgentWorkspaceItems(
+	agents: readonly IAgentState[],
+	swarms: readonly ISwarmState[],
+	reviewGates: readonly IReviewGateState[],
+	mergeQueue: readonly AtlasModel.IMergeEntry[],
+	now: number,
+	selectedDispatchId: string | undefined,
+): readonly IAgentWorkspaceItem[] {
+	const swarmByTaskId = indexSwarmsByTaskId(swarms);
+	const reviewByDispatchId = new Map(reviewGates.filter(isReviewOutstanding).map(gate => [gate.dispatchId, gate] as const));
+	const mergeByDispatchId = new Map(mergeQueue.filter(isMergeAttentionEntry).map(entry => [entry.dispatchId, entry] as const));
+
+	return Object.freeze([...agents]
+		.map(agent => {
+			const swarmId = swarmByTaskId.get(agent.taskId)?.swarmId;
+			const gate = reviewByDispatchId.get(agent.dispatchId);
+			const merge = mergeByDispatchId.get(agent.dispatchId);
+			const pressureParts: string[] = [];
+			if (gate) {
+				pressureParts.push(`Gate ${formatStateLabel(gate.reviewState)}`);
+			}
+			if (merge) {
+				pressureParts.push(`Merge ${formatStateLabel(merge.status)}`);
+			}
+			return {
+				id: agent.dispatchId,
+				dispatchId: agent.dispatchId,
+				title: agent.roleId,
+				subtitle: `${agent.dispatchId} • ${agent.taskId}`,
+				statusKind: agent.status,
+				status: formatStateLabel(agent.status),
+				attentionLevel: agent.attentionLevel,
+				heartbeatLabel: formatRecencyLabel(now, agent.lastHeartbeat),
+				activityLabel: agent.lastActivity ?? 'No recent activity reported',
+				taskId: agent.taskId,
+				swarmId,
+				worktreePath: agent.worktreePath,
+				pressureSummary: pressureParts.length > 0 ? pressureParts.join(' • ') : undefined,
+				selected: agent.dispatchId === selectedDispatchId,
+				target: agentTarget(agent.dispatchId),
+			};
+		})
+		.sort((left, right) =>
+			Number(right.selected) - Number(left.selected)
+			|| right.attentionLevel - left.attentionLevel
+			|| left.dispatchId.localeCompare(right.dispatchId)));
+}
+
+function buildAgentWorkspacePressureEntries(
+	agent: IAgentState,
+	reviewGates: readonly IReviewGateState[],
+	mergeQueue: readonly AtlasModel.IMergeEntry[],
+): readonly IAgentWorkspacePressureEntry[] {
+	const entries: IAgentWorkspacePressureEntry[] = [];
+	const gate = reviewGates.find(entry => entry.dispatchId === agent.dispatchId && isReviewOutstanding(entry));
+	const merge = mergeQueue.find(entry => entry.dispatchId === agent.dispatchId && isMergeAttentionEntry(entry));
+	if (gate) {
+		entries.push({
+			id: reviewItemId(gate.dispatchId, ReviewTargetKind.Gate),
+			label: gate.roleId,
+			subtitle: gate.taskId,
+			status: formatStateLabel(gate.reviewState),
+			kind: ReviewTargetKind.Gate,
+			attentionLevel: gate.attentionLevel,
+			target: { kind: EntityKind.Review, id: gate.dispatchId, reviewTargetKind: ReviewTargetKind.Gate },
+		});
+	}
+	if (merge) {
+		entries.push({
+			id: reviewItemId(merge.dispatchId, ReviewTargetKind.Merge),
+			label: basename(merge.worktreePath) || merge.candidateBranch,
+			subtitle: merge.taskId,
+			status: formatStateLabel(merge.status),
+			kind: ReviewTargetKind.Merge,
+			attentionLevel: merge.attentionLevel,
+			target: { kind: EntityKind.Review, id: merge.dispatchId, reviewTargetKind: ReviewTargetKind.Merge },
+		});
+	}
+	return Object.freeze(entries);
+}
+
+function buildAgentWorkspaceGroup(
+	id: string,
+	label: string,
+	summary: string,
+	items: readonly IAgentWorkspaceItem[],
+	emptyMessage: string,
+): IAgentWorkspaceGroup {
+	return {
+		id,
+		label,
+		summary,
+		count: items.length,
+		attentionLevel: highestAttention(items.map(item => item.attentionLevel)),
+		emptyMessage,
+		items,
+	};
+}
+
+function entityLink(id: string, label: string, target: AtlasModel.ISelectedEntity): IEntityWorkspaceLink {
+	return { kind: 'entity', id, label, target };
+}
+
+function sectionLink(id: string, label: string, section: NavigationSection): ISectionWorkspaceLink {
+	return { kind: 'section', id, label, section };
+}
+
+function swarmTarget(id: string): AtlasModel.ISelectedEntity {
+	return { kind: EntityKind.Swarm, id };
+}
+
+function taskTarget(id: string): AtlasModel.ISelectedEntity {
+	return { kind: EntityKind.Task, id };
+}
+
+function objectiveTarget(id: string): AtlasModel.ISelectedEntity {
+	return { kind: EntityKind.Objective, id };
+}
+
+function agentTarget(id: string): AtlasModel.ISelectedEntity {
+	return { kind: EntityKind.Agent, id };
 }
 
 function indexSwarmsByTaskId(swarms: readonly ISwarmState[]): Map<string, ISwarmState> {

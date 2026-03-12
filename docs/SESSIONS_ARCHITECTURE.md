@@ -252,7 +252,9 @@ Polling mode and the browser stub remain read-only, and deeper review editors re
 
 The Phase 4/5 shipped center shell is intentionally narrower than the longer-term product roadmap:
 
-- `Tasks`, `Agents`, and `Reviews` render truthful summary/detail shells from current harness state
+- `Tasks` now renders a dedicated swarm-rooted read-only workspace from current harness + Phase 3 swarm state
+- `Agents` now renders a dedicated read-only execution workspace from current fleet / task / review state
+- `Reviews` renders the dedicated actionable authoritative review / merge workspace
 - `Fleet` renders the dedicated Fleet Command operator surface described above
 
 The broader center-stage boards remain later work:

@@ -18,12 +18,14 @@ import { TaskStatus, type ITaskState } from '../../../../common/model/task.js';
 import { ReviewDecision, WireDispatchPriority, WireIntegrationState, WirePromotionState, WireReviewState } from '../../../../common/model/wire.js';
 import { HarnessConnectionState, type IHarnessConnectionInfo } from '../../../../services/harness/common/harnessService.js';
 import {
+	buildAgentsWorkspaceModel,
 	buildAtlasShellModel,
 	buildFleetCommandModel,
 	buildReviewNavigationItems,
 	buildReviewWorkspaceModel,
 	buildSectionDescriptors,
 	buildTaskNavigationItems,
+	buildTasksWorkspaceModel,
 } from '../../browser/atlasNavigationModel.js';
 import { ReviewWorkspaceActionId } from '../../browser/atlasReviewWorkspaceActions.js';
 
@@ -558,6 +560,231 @@ suite('AtlasNavigationModel', () => {
 		assert.strictEqual(runningItem.hasMergePressure, false);
 		assert.strictEqual(runningItem.pressureSummary, undefined);
 		assert.deepStrictEqual(runningItem.pivots.map(pivot => pivot.id), ['agent:disp-live-1', 'swarm:TASK-ROOT-1']);
+	});
+
+	test('builds a swarm-rooted tasks workspace with rooted lineage, related agents, and review pressure', () => {
+		const now = 600_000;
+		const state = createAtlasStateSnapshot({
+			swarms: [
+				createSwarmState({
+					swarmId: 'TASK-ROOT-1',
+					rootTaskId: 'TASK-ROOT-1',
+					objectiveId: 'OBJ-1',
+					objectiveProblemStatement: 'Ship the agent execution surface',
+					taskIds: Object.freeze(['TASK-ROOT-1', 'TASK-CHILD-1']),
+					agentDispatchIds: Object.freeze(['disp-root']),
+					reviewDispatchIds: Object.freeze(['disp-gate-1']),
+					mergeDispatchIds: Object.freeze(['disp-merge-1']),
+					reviewNeeded: true,
+					updatedAt: 540_000,
+				}),
+			],
+			tasks: [
+				createTaskState({
+					taskId: 'TASK-ROOT-1',
+					dispatchId: 'disp-root',
+					summary: 'Root planner task',
+					status: TaskStatus.Executing,
+					enqueuedAt: 100,
+				}),
+				createTaskState({
+					taskId: 'TASK-CHILD-1',
+					parentTaskId: 'TASK-ROOT-1',
+					dispatchId: 'disp-child',
+					roleId: 'worker',
+					summary: 'Implement the center shell',
+					status: TaskStatus.Blocked,
+					attentionLevel: AttentionLevel.NeedsAction,
+					enqueuedAt: 150,
+				}),
+			],
+			objectives: [
+				createObjectiveState({
+					objectiveId: 'OBJ-1',
+					rootTaskId: 'TASK-ROOT-1',
+					problemStatement: 'Ship the agent execution surface',
+				}),
+			],
+			fleet: createFleetState([
+				createAgentState({
+					dispatchId: 'disp-root',
+					taskId: 'TASK-ROOT-1',
+					lastHeartbeat: 590_000,
+				}),
+			]),
+			reviewGates: [
+				createReviewGateState({
+					dispatchId: 'disp-gate-1',
+					taskId: 'TASK-CHILD-1',
+					reviewState: WireReviewState.AwaitingReview,
+				}),
+			],
+			mergeQueue: [
+				createMergeEntry({
+					dispatchId: 'disp-merge-1',
+					taskId: 'TASK-ROOT-1',
+					status: MergeExecutionStatus.Pending,
+					attentionLevel: AttentionLevel.Active,
+				}),
+			],
+		});
+
+		const model = buildTasksWorkspaceModel(
+			{ section: NavigationSection.Tasks, entity: { kind: EntityKind.Task, id: 'TASK-CHILD-1' } },
+			state,
+			now,
+		);
+
+		assert.strictEqual(model.mode, 'swarm');
+		assert.strictEqual(model.title, 'Ship the agent execution surface');
+		assert.deepStrictEqual(model.taskEntries.map(entry => ({ taskId: entry.taskId, depth: entry.depth, selected: entry.selected })), [
+			{ taskId: 'TASK-ROOT-1', depth: 0, selected: false },
+			{ taskId: 'TASK-CHILD-1', depth: 1, selected: true },
+		]);
+		assert.deepStrictEqual(model.agentEntries.map(entry => entry.dispatchId), ['disp-root']);
+		assert.deepStrictEqual(model.pressureEntries.map(entry => ({ id: entry.id, kind: entry.kind })), [
+			{ id: 'gate:disp-gate-1', kind: ReviewTargetKind.Gate },
+			{ id: 'merge:disp-merge-1', kind: ReviewTargetKind.Merge },
+		]);
+		assert.ok(model.details.some(detail => detail.label === 'Objective' && detail.value.includes('OBJ-1')));
+		assert.deepStrictEqual(model.links.map(link => link.label), ['Open Objective', 'Browse Agents', 'Browse Reviews', 'Open Fleet']);
+	});
+
+	test('builds a substantive agents overview with deterministic execution groups', () => {
+		const now = 900_000;
+		const state = createAtlasStateSnapshot({
+			swarms: [
+				createSwarmState({
+					swarmId: 'TASK-ROOT-1',
+					rootTaskId: 'TASK-ROOT-1',
+					taskIds: Object.freeze(['TASK-ROOT-1']),
+				}),
+				createSwarmState({
+					swarmId: 'TASK-ROOT-2',
+					rootTaskId: 'TASK-ROOT-2',
+					taskIds: Object.freeze(['TASK-ROOT-2']),
+				}),
+			],
+			fleet: createFleetState([
+				createAgentState({
+					dispatchId: 'disp-running-1',
+					taskId: 'TASK-ROOT-1',
+					status: AgentStatus.Running,
+					lastHeartbeat: now - 5_000,
+				}),
+				createAgentState({
+					dispatchId: 'disp-blocked-1',
+					taskId: 'TASK-ROOT-1',
+					status: AgentStatus.Blocked,
+					attentionLevel: AttentionLevel.NeedsAction,
+					lastHeartbeat: now - 30_000,
+				}),
+				createAgentState({
+					dispatchId: 'disp-failed-1',
+					taskId: 'TASK-ROOT-2',
+					status: AgentStatus.Failed,
+					attentionLevel: AttentionLevel.Critical,
+					lastHeartbeat: now - 45_000,
+				}),
+				createAgentState({
+					dispatchId: 'disp-idle-1',
+					taskId: 'TASK-ROOT-2',
+					status: AgentStatus.Idle,
+					lastHeartbeat: now - 120_000,
+				}),
+			]),
+		});
+
+		const model = buildAgentsWorkspaceModel(
+			{ section: NavigationSection.Agents, entity: undefined },
+			state,
+			now,
+		);
+
+		assert.strictEqual(model.mode, 'overview');
+		assert.deepStrictEqual(model.groups.map(group => ({ id: group.id, count: group.count })), [
+			{ id: 'running', count: 1 },
+			{ id: 'blocked', count: 1 },
+			{ id: 'failed', count: 1 },
+			{ id: 'idle', count: 1 },
+		]);
+		assert.deepStrictEqual(model.links.map(link => link.label), ['Browse Tasks', 'Browse Reviews', 'Open Fleet']);
+		assert.strictEqual(model.groups[0].items[0].heartbeatLabel, '5s ago');
+	});
+
+	test('builds a focused agent execution workspace with swarm, task, and review pivots', () => {
+		const now = 1_200_000;
+		const dispatchId = 'disp-agent-1';
+		const state = createAtlasStateSnapshot({
+			swarms: [
+				createSwarmState({
+					swarmId: 'TASK-ROOT-1',
+					rootTaskId: 'TASK-ROOT-1',
+					taskIds: Object.freeze(['TASK-ROOT-1', 'TASK-CHILD-1']),
+				}),
+			],
+			fleet: createFleetState([
+				createAgentState({
+					dispatchId,
+					taskId: 'TASK-CHILD-1',
+					roleId: 'worker',
+					status: AgentStatus.Blocked,
+					worktreePath: '/workspace/feature/disp-agent-1',
+					lastHeartbeat: now - 15_000,
+					timeInState: 300_000,
+					lastActivity: 'Waiting on review gate',
+					attentionLevel: AttentionLevel.NeedsAction,
+				}),
+				createAgentState({
+					dispatchId: 'disp-peer-1',
+					taskId: 'TASK-CHILD-1',
+					roleId: 'judge',
+					status: AgentStatus.Running,
+					lastHeartbeat: now - 3_000,
+				}),
+				createAgentState({
+					dispatchId: 'disp-peer-2',
+					taskId: 'TASK-ROOT-1',
+					roleId: 'planner',
+					status: AgentStatus.Running,
+					lastHeartbeat: now - 10_000,
+				}),
+			]),
+			reviewGates: [
+				createReviewGateState({
+					dispatchId,
+					taskId: 'TASK-CHILD-1',
+					roleId: 'axiom-judge',
+					reviewState: WireReviewState.AwaitingReview,
+				}),
+			],
+			mergeQueue: [
+				createMergeEntry({
+					dispatchId,
+					taskId: 'TASK-CHILD-1',
+					status: MergeExecutionStatus.Pending,
+					attentionLevel: AttentionLevel.Active,
+				}),
+			],
+		});
+
+		const model = buildAgentsWorkspaceModel(
+			{ section: NavigationSection.Agents, entity: { kind: EntityKind.Agent, id: dispatchId } },
+			state,
+			now,
+		);
+
+		assert.strictEqual(model.mode, 'agent');
+		assert.strictEqual(model.selectedDispatchId, dispatchId);
+		assert.deepStrictEqual(model.links.map(link => link.label), ['Open Swarm', 'Open Task', 'Open Fleet', 'Open Gate', 'Open Merge']);
+		assert.deepStrictEqual(model.pressureEntries.map(entry => entry.kind), [ReviewTargetKind.Gate, ReviewTargetKind.Merge]);
+		assert.ok(model.details.some(detail => detail.label === 'Worktree' && detail.value === '/workspace/feature/disp-agent-1'));
+		assert.deepStrictEqual(model.groups.map(group => ({ id: group.id, count: group.count })), [
+			{ id: 'same-task', count: 1 },
+			{ id: 'same-swarm', count: 1 },
+		]);
+		assert.strictEqual(model.groups[0].items[0].dispatchId, 'disp-peer-1');
+		assert.strictEqual(model.groups[1].items[0].dispatchId, 'disp-peer-2');
 	});
 });
 

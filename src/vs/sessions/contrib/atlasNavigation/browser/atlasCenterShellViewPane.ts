@@ -23,7 +23,24 @@ import { IOpenerService } from '../../../../platform/opener/common/opener.js';
 import { IHoverService } from '../../../../platform/hover/browser/hover.js';
 import { IFleetManagementService } from '../../../services/fleet/common/fleetManagementService.js';
 import { IHarnessService } from '../../../services/harness/common/harnessService.js';
-import { buildAtlasShellModel, buildFleetCommandModel, buildReviewWorkspaceModel, type IReviewWorkspaceAction, type IReviewWorkspaceEntry, type IReviewWorkspaceLink, type IReviewWorkspaceModel } from './atlasNavigationModel.js';
+import {
+	buildAgentsWorkspaceModel,
+	buildAtlasShellModel,
+	buildFleetCommandModel,
+	buildReviewWorkspaceModel,
+	buildTasksWorkspaceModel,
+	type IAgentWorkspaceGroup,
+	type IAgentWorkspaceItem,
+	type IAtlasWorkspaceLink,
+	type IReviewWorkspaceAction,
+	type IReviewWorkspaceEntry,
+	type IReviewWorkspaceModel,
+	type ITaskWorkspaceAgentEntry,
+	type ITaskWorkspaceModel,
+	type ITaskWorkspacePressureEntry,
+	type ITaskWorkspaceSwarmCard,
+	type ITaskWorkspaceTaskEntry,
+} from './atlasNavigationModel.js';
 import { AtlasReviewWorkspaceActionController } from './atlasReviewWorkspaceActions.js';
 
 const $ = DOM.$;
@@ -85,6 +102,16 @@ export class AtlasCenterShellViewPane extends ViewPane {
 				return;
 			}
 
+			if (selection.section === NavigationSection.Tasks) {
+				this.renderTasksWorkspace(buildTasksWorkspaceModel(selection, state));
+				return;
+			}
+
+			if (selection.section === NavigationSection.Agents) {
+				this.renderAgentsWorkspace(buildAgentsWorkspaceModel(selection, state));
+				return;
+			}
+
 			this.renderShell(buildAtlasShellModel(selection, state));
 		}));
 	}
@@ -133,6 +160,320 @@ export class AtlasCenterShellViewPane extends ViewPane {
 			const itemStatus = DOM.append(row, $('div.atlas-center-shell-item-status'));
 			itemStatus.textContent = item.status;
 		}
+	}
+
+	private renderTasksWorkspace(model: ITaskWorkspaceModel): void {
+		if (!this.bodyContainer) {
+			return;
+		}
+
+		DOM.clearNode(this.bodyContainer);
+
+		const root = DOM.append(this.bodyContainer, $('.atlas-center-shell-root.atlas-center-shell-root-tasks'));
+		this.renderWorkspaceHero(root, model.title, model.subtitle, model.stats);
+
+		if (model.details.length > 0) {
+			this.renderWorkspaceDetails(root, model.details, 'atlas-task-workspace-details');
+		}
+		if (model.links.length > 0) {
+			this.renderWorkspaceLinks(root, model.links, 'atlas-task-workspace-links');
+		}
+
+		if (model.mode === 'overview') {
+			if (model.swarmCards.length === 0) {
+				this.renderEmptyState(root, localize2('atlasCenterShell.tasksEmpty', 'No swarms yet').value, model.emptyMessage);
+				return;
+			}
+
+			const grid = DOM.append(root, $('section.atlas-task-workspace-swarm-grid'));
+			for (const card of model.swarmCards) {
+				this.renderTaskSwarmCard(grid, card);
+			}
+			return;
+		}
+
+		const support = DOM.append(root, $('div.atlas-task-workspace-support'));
+		const agentSection = DOM.append(support, $('section.atlas-task-workspace-panel'));
+		const agentTitle = DOM.append(agentSection, $('div.atlas-task-workspace-panel-title'));
+		agentTitle.textContent = localize2('atlasCenterShell.taskAgents', 'Related agents').value;
+		if (model.agentEntries.length === 0) {
+			const empty = DOM.append(agentSection, $('div.atlas-task-workspace-panel-empty'));
+			empty.textContent = 'No live agents are currently linked to this swarm.';
+		} else {
+			const list = DOM.append(agentSection, $('div.atlas-task-workspace-agent-list'));
+			for (const entry of model.agentEntries) {
+				this.renderTaskAgentEntry(list, entry);
+			}
+		}
+
+		const pressureSection = DOM.append(support, $('section.atlas-task-workspace-panel'));
+		const pressureTitle = DOM.append(pressureSection, $('div.atlas-task-workspace-panel-title'));
+		pressureTitle.textContent = localize2('atlasCenterShell.taskPressure', 'Review and merge pressure').value;
+		if (model.pressureEntries.length === 0) {
+			const empty = DOM.append(pressureSection, $('div.atlas-task-workspace-panel-empty'));
+			empty.textContent = 'No active review or merge pressure is currently attached to this swarm.';
+		} else {
+			const list = DOM.append(pressureSection, $('div.atlas-task-workspace-pressure-list'));
+			for (const entry of model.pressureEntries) {
+				this.renderTaskPressureEntry(list, entry);
+			}
+		}
+
+		if (model.taskEntries.length === 0) {
+			this.renderEmptyState(root, localize2('atlasCenterShell.taskLineageEmpty', 'No task lineage yet').value, model.emptyMessage);
+			return;
+		}
+
+		const treeSection = DOM.append(root, $('section.atlas-task-workspace-tree-section'));
+		const treeTitle = DOM.append(treeSection, $('div.atlas-task-workspace-panel-title'));
+		treeTitle.textContent = localize2('atlasCenterShell.taskTree', 'Rooted task tree').value;
+		const tree = DOM.append(treeSection, $('div.atlas-task-workspace-tree'));
+		for (const entry of model.taskEntries) {
+			this.renderTaskTreeEntry(tree, entry);
+		}
+	}
+
+	private renderAgentsWorkspace(model: ReturnType<typeof buildAgentsWorkspaceModel>): void {
+		if (!this.bodyContainer) {
+			return;
+		}
+
+		DOM.clearNode(this.bodyContainer);
+
+		const root = DOM.append(this.bodyContainer, $('.atlas-center-shell-root.atlas-center-shell-root-agents'));
+		this.renderWorkspaceHero(root, model.title, model.subtitle, model.stats);
+
+		if (model.details.length > 0) {
+			this.renderWorkspaceDetails(root, model.details, 'atlas-agent-workspace-details');
+		}
+		if (model.links.length > 0) {
+			this.renderWorkspaceLinks(root, model.links, 'atlas-agent-workspace-links');
+		}
+
+		if (model.pressureEntries.length > 0) {
+			const pressure = DOM.append(root, $('section.atlas-agent-workspace-pressure'));
+			const title = DOM.append(pressure, $('div.atlas-task-workspace-panel-title'));
+			title.textContent = localize2('atlasCenterShell.agentPressure', 'Dispatch pressure').value;
+			const list = DOM.append(pressure, $('div.atlas-task-workspace-pressure-list'));
+			for (const entry of model.pressureEntries) {
+				this.renderTaskPressureEntry(list, entry);
+			}
+		}
+
+		const groups = DOM.append(root, $('div.atlas-agent-workspace-groups'));
+		for (const group of model.groups) {
+			this.renderAgentWorkspaceGroup(groups, group);
+		}
+
+		if (model.groups.every(group => group.items.length === 0)) {
+			this.renderEmptyState(root, localize2('atlasCenterShell.agentsEmpty', 'No related agents').value, model.emptyMessage);
+		}
+	}
+
+	private renderWorkspaceHero(container: HTMLElement, titleText: string, subtitleText: string, stats: readonly { label: string; value: string; attentionLevel: AttentionLevel | undefined }[]): void {
+		const hero = DOM.append(container, $('.atlas-center-shell-hero'));
+		const title = DOM.append(hero, $('h1.atlas-center-shell-title'));
+		title.textContent = titleText;
+		const subtitle = DOM.append(hero, $('div.atlas-center-shell-subtitle'));
+		subtitle.textContent = subtitleText;
+
+		const statGrid = DOM.append(container, $('.atlas-center-shell-stats'));
+		for (const item of stats) {
+			const card = DOM.append(statGrid, $('.atlas-center-shell-stat'));
+			card.classList.add(attentionClass(item.attentionLevel));
+			const label = DOM.append(card, $('div.atlas-center-shell-stat-label'));
+			label.textContent = item.label;
+			const value = DOM.append(card, $('div.atlas-center-shell-stat-value'));
+			value.textContent = item.value;
+		}
+	}
+
+	private renderWorkspaceDetails(container: HTMLElement, details: readonly { label: string; value: string; attentionLevel: AttentionLevel | undefined }[], className: string): void {
+		const section = DOM.append(container, $(`section.${className}`));
+		for (const item of details) {
+			const card = DOM.append(section, $('div.atlas-task-workspace-detail'));
+			card.classList.add(attentionClass(item.attentionLevel));
+			const label = DOM.append(card, $('div.atlas-task-workspace-detail-label'));
+			label.textContent = item.label;
+			const value = DOM.append(card, $('div.atlas-task-workspace-detail-value'));
+			value.textContent = item.value;
+		}
+	}
+
+	private renderWorkspaceLinks(container: HTMLElement, links: readonly IAtlasWorkspaceLink[], className: string): void {
+		const section = DOM.append(container, $(`div.${className}`));
+		for (const link of links) {
+			const button = DOM.append(section, $('button.atlas-task-workspace-link')) as HTMLButtonElement;
+			button.type = 'button';
+			button.textContent = link.label;
+			button.addEventListener('click', () => this.openWorkspaceLink(link));
+		}
+	}
+
+	private openWorkspaceLink(link: IAtlasWorkspaceLink): void {
+		if (link.kind === 'entity') {
+			this.fleetManagementService.selectEntity(link.target);
+			return;
+		}
+		this.fleetManagementService.selectSection(link.section);
+	}
+
+	private renderTaskSwarmCard(container: HTMLElement, cardModel: ITaskWorkspaceSwarmCard): void {
+		const card = DOM.append(container, $('button.atlas-task-workspace-swarm-card')) as HTMLButtonElement;
+		card.type = 'button';
+		card.classList.add(attentionClass(cardModel.attentionLevel));
+		if (cardModel.selected) {
+			card.classList.add('atlas-task-workspace-swarm-card-selected');
+		}
+		card.addEventListener('click', () => this.fleetManagementService.selectEntity(cardModel.target));
+
+		const header = DOM.append(card, $('div.atlas-task-workspace-swarm-card-header'));
+		const title = DOM.append(header, $('div.atlas-task-workspace-swarm-card-title'));
+		title.textContent = cardModel.title;
+		const phase = DOM.append(header, $('div.atlas-task-workspace-swarm-card-phase'));
+		phase.textContent = cardModel.phaseLabel;
+
+		const subtitle = DOM.append(card, $('div.atlas-task-workspace-swarm-card-subtitle'));
+		subtitle.textContent = cardModel.subtitle;
+
+		const meta = DOM.append(card, $('div.atlas-task-workspace-swarm-card-meta'));
+		this.renderTaskMeta(meta, 'Tasks', String(cardModel.taskCount));
+		this.renderTaskMeta(meta, 'Agents', String(cardModel.agentCount));
+		this.renderTaskMeta(meta, 'Pressure', String(cardModel.reviewCount));
+	}
+
+	private renderTaskTreeEntry(container: HTMLElement, entry: ITaskWorkspaceTaskEntry): void {
+		const button = DOM.append(container, $('button.atlas-task-workspace-tree-entry')) as HTMLButtonElement;
+		button.type = 'button';
+		button.classList.add(attentionClass(entry.attentionLevel));
+		if (entry.selected) {
+			button.classList.add('atlas-task-workspace-tree-entry-selected');
+		}
+		button.style.paddingLeft = `${14 + (entry.depth * 18)}px`;
+		button.addEventListener('click', () => this.fleetManagementService.selectEntity(entry.target));
+
+		const titleRow = DOM.append(button, $('div.atlas-task-workspace-tree-title-row'));
+		const title = DOM.append(titleRow, $('div.atlas-task-workspace-tree-title'));
+		title.textContent = entry.summary;
+		const status = DOM.append(titleRow, $('div.atlas-task-workspace-tree-status'));
+		status.textContent = entry.statusLabel;
+
+		const meta = DOM.append(button, $('div.atlas-task-workspace-tree-meta'));
+		const role = DOM.append(meta, $('span.atlas-task-workspace-tree-pill'));
+		role.textContent = entry.roleLabel;
+		if (entry.isRoot) {
+			const root = DOM.append(meta, $('span.atlas-task-workspace-tree-pill'));
+			root.textContent = 'Root';
+		}
+		if (entry.dispatchId) {
+			const dispatch = DOM.append(meta, $('span.atlas-task-workspace-tree-pill'));
+			dispatch.textContent = entry.dispatchId;
+		}
+		const agents = DOM.append(meta, $('span.atlas-task-workspace-tree-pill'));
+		agents.textContent = `${entry.agentCount} agent${entry.agentCount === 1 ? '' : 's'}`;
+		if (entry.pressureSummary) {
+			const pressure = DOM.append(meta, $('span.atlas-task-workspace-tree-pill.atlas-task-workspace-tree-pill-pressure'));
+			pressure.textContent = entry.pressureSummary;
+		}
+	}
+
+	private renderTaskAgentEntry(container: HTMLElement, entry: ITaskWorkspaceAgentEntry): void {
+		const button = DOM.append(container, $('button.atlas-task-workspace-support-entry')) as HTMLButtonElement;
+		button.type = 'button';
+		button.classList.add(attentionClass(entry.attentionLevel));
+		button.addEventListener('click', () => this.fleetManagementService.selectEntity(entry.target));
+
+		const title = DOM.append(button, $('div.atlas-task-workspace-support-entry-title'));
+		title.textContent = entry.label;
+		const subtitle = DOM.append(button, $('div.atlas-task-workspace-support-entry-subtitle'));
+		subtitle.textContent = entry.subtitle;
+		const status = DOM.append(button, $('div.atlas-task-workspace-support-entry-status'));
+		status.textContent = entry.status;
+	}
+
+	private renderTaskPressureEntry(container: HTMLElement, entry: ITaskWorkspacePressureEntry | { label: string; subtitle: string; status: string; kind: ReviewTargetKind; attentionLevel: AttentionLevel; target: AtlasModel.ISelectedEntity }): void {
+		const button = DOM.append(container, $('button.atlas-task-workspace-support-entry')) as HTMLButtonElement;
+		button.type = 'button';
+		button.classList.add(attentionClass(entry.attentionLevel));
+		button.addEventListener('click', () => this.fleetManagementService.selectEntity(entry.target));
+
+		const title = DOM.append(button, $('div.atlas-task-workspace-support-entry-title'));
+		title.textContent = entry.label;
+		const subtitle = DOM.append(button, $('div.atlas-task-workspace-support-entry-subtitle'));
+		subtitle.textContent = `${entry.kind === ReviewTargetKind.Gate ? 'Gate' : 'Merge'} • ${entry.subtitle}`;
+		const status = DOM.append(button, $('div.atlas-task-workspace-support-entry-status'));
+		status.textContent = entry.status;
+	}
+
+	private renderAgentWorkspaceGroup(container: HTMLElement, group: IAgentWorkspaceGroup): void {
+		const section = DOM.append(container, $('section.atlas-agent-workspace-group'));
+		const header = DOM.append(section, $('div.atlas-agent-workspace-group-header'));
+		const text = DOM.append(header, $('div.atlas-agent-workspace-group-text'));
+		const title = DOM.append(text, $('div.atlas-agent-workspace-group-title'));
+		title.textContent = group.label;
+		const summary = DOM.append(text, $('div.atlas-agent-workspace-group-summary'));
+		summary.textContent = group.summary;
+		const count = DOM.append(header, $('div.atlas-agent-workspace-group-count'));
+		count.classList.add(attentionClass(group.attentionLevel));
+		count.textContent = String(group.count);
+
+		if (group.items.length === 0) {
+			const empty = DOM.append(section, $('div.atlas-task-workspace-panel-empty'));
+			empty.textContent = group.emptyMessage;
+			return;
+		}
+
+		const list = DOM.append(section, $('div.atlas-agent-workspace-card-list'));
+		for (const item of group.items) {
+			this.renderAgentWorkspaceItem(list, item);
+		}
+	}
+
+	private renderAgentWorkspaceItem(container: HTMLElement, item: IAgentWorkspaceItem): void {
+		const card = DOM.append(container, $('button.atlas-agent-workspace-card')) as HTMLButtonElement;
+		card.type = 'button';
+		card.classList.add(attentionClass(item.attentionLevel));
+		if (item.selected) {
+			card.classList.add('atlas-agent-workspace-card-selected');
+		}
+		card.addEventListener('click', () => this.fleetManagementService.selectEntity(item.target));
+
+		const header = DOM.append(card, $('div.atlas-agent-workspace-card-header'));
+		const title = DOM.append(header, $('div.atlas-agent-workspace-card-title'));
+		title.textContent = item.title;
+		const status = DOM.append(header, $('div.atlas-agent-workspace-card-status'));
+		status.textContent = item.status;
+
+		const subtitle = DOM.append(card, $('div.atlas-agent-workspace-card-subtitle'));
+		subtitle.textContent = item.subtitle;
+
+		const meta = DOM.append(card, $('div.atlas-agent-workspace-card-meta'));
+		this.renderTaskMeta(meta, 'Task', item.taskId);
+		this.renderTaskMeta(meta, item.swarmId ? 'Swarm' : 'Work root', item.swarmId ?? item.taskId);
+		this.renderTaskMeta(meta, 'Heartbeat', item.heartbeatLabel);
+		this.renderTaskMeta(meta, 'Activity', item.activityLabel);
+		if (item.worktreePath) {
+			this.renderTaskMeta(meta, 'Worktree', item.worktreePath);
+		}
+		if (item.pressureSummary) {
+			this.renderTaskMeta(meta, 'Pressure', item.pressureSummary);
+		}
+	}
+
+	private renderTaskMeta(container: HTMLElement, labelText: string, valueText: string): void {
+		const item = DOM.append(container, $('div.atlas-task-workspace-meta-item'));
+		const label = DOM.append(item, $('div.atlas-task-workspace-meta-label'));
+		label.textContent = labelText;
+		const value = DOM.append(item, $('div.atlas-task-workspace-meta-value'));
+		value.textContent = valueText;
+	}
+
+	private renderEmptyState(container: HTMLElement, titleText: string, messageText: string): void {
+		const empty = DOM.append(container, $('.atlas-center-shell-empty'));
+		const title = DOM.append(empty, $('div.atlas-center-shell-empty-title'));
+		title.textContent = titleText;
+		const message = DOM.append(empty, $('div.atlas-center-shell-empty-message'));
+		message.textContent = messageText;
 	}
 
 	private renderFleetCommand(model: ReturnType<typeof buildFleetCommandModel>): void {
@@ -315,11 +656,11 @@ export class AtlasCenterShellViewPane extends ViewPane {
 		}
 	}
 
-	private renderReviewLink(container: HTMLElement, link: IReviewWorkspaceLink): void {
+	private renderReviewLink(container: HTMLElement, link: IAtlasWorkspaceLink): void {
 		const button = DOM.append(container, $('button.atlas-review-workspace-link')) as HTMLButtonElement;
 		button.type = 'button';
 		button.textContent = link.label;
-		button.addEventListener('click', () => this.fleetManagementService.selectEntity(link.target));
+		button.addEventListener('click', () => this.openWorkspaceLink(link));
 	}
 
 	private renderReviewAction(container: HTMLElement, action: IReviewWorkspaceAction, model: IReviewWorkspaceModel): void {

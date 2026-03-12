@@ -1,5 +1,63 @@
 # Agent Changes
 
+## Phase 7A
+
+### What landed
+
+- Turned the `Tasks` center shell from a thin summary placeholder into a real swarm-rooted work surface inside the existing Atlas sessions shell.
+- Turned the `Agents` center shell from a thin summary placeholder into a real execution-focused dispatch surface inside the existing Atlas sessions shell.
+- Kept the work sessions-only and read-only:
+  - no deep inspector coupling
+  - no write controls
+  - no titlebar or multi-monitor work
+- Preserved the already-shipped dedicated `Reviews` and `Fleet` workspaces while splitting `Tasks` and `Agents` onto their own center-stage model/render paths.
+
+### Tasks surface shipped
+
+- Section-level `Tasks` now renders an overview of rooted swarms instead of a generic list-only placeholder.
+- Selected swarm/task/objective routes now render a dedicated swarm-rooted workspace showing:
+  - rooted task lineage
+  - objective metadata when attached
+  - swarm phase / attention / failure-blocking summary
+  - related live agents
+  - related review and merge pressure
+- Root-task identity remains primary:
+  - swarm identity is still `rootTaskId`
+  - objective metadata decorates the workspace but never replaces swarm identity
+
+### Agents surface shipped
+
+- Section-level `Agents` now renders grouped execution slices (`Running`, `Blocked`, `Failed`, `Idle / recent`) instead of a generic placeholder list.
+- Selected agent routes now render a dedicated execution workspace showing:
+  - dispatch, task, swarm, status, heartbeat, time-in-state
+  - current known worktree path when present
+  - current known activity and cost from existing Atlas bridge state
+  - dispatch-scoped review / merge pressure when present
+  - pivots back to swarm, task, reviews, and fleet
+
+### Tests added or updated
+
+- `src/vs/sessions/contrib/atlasNavigation/test/node/atlasNavigationModel.test.ts`
+
+### Verification
+
+- `git diff --check`: passed
+- `node build/checker/layersChecker.ts`: passed
+- `env PATH=\"/opt/homebrew/opt/node@22/bin:$PATH\" npm run compile-check-ts-native`: failed only on pre-existing unrelated noise in `src/vs/server/node/webClientServer.ts`
+  - `src/vs/server/node/webClientServer.ts(17,84)` `TS6133` `builtinExtensionsPath`
+  - `src/vs/server/node/webClientServer.ts(29,10)` `TS6133` `IExtensionManifest`
+- Focused Phase 7A navigation tests:
+  - `env PATH=\"/opt/homebrew/opt/node@22/bin:$PATH\" npm run test-node -- --runGlob \"vs/sessions/contrib/atlasNavigation/test/node/*.test.js\"`: passed (`20 passing`)
+  - In this isolated worktree, the stock node runner needed a temporary shared `node_modules` symlink plus a temporary local `out/` overlay composed of the main repo baseline build and a narrow transpile of the touched sessions files. Those temporary artifacts were removed after verification.
+
+### Intentionally unimplemented
+
+- Objective board and swarm board editor surfaces
+- Transcript-backed agent execution panes
+- Right inspector / deep inspector coupling
+- Titlebar redesign, multi-monitor work, and later UI phases
+- Any write controls for `Tasks` or `Agents`
+
 ## Phase 6
 
 ### What landed

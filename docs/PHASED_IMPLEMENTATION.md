@@ -1774,7 +1774,7 @@ This wave intentionally stops at the actionable review workspace. The broader pr
 
 ### Objective
 
-Extend the center area beyond chat to support all Atlas modes — boards, grids, agent views — using the VS Code editor infrastructure.
+Phase 7 now lands in slices. The currently shipped `7A` wave turns the existing sessions center shell into first-class read-only work surfaces for `Tasks` and `Agents`, backed by the current harness bridge and Phase 3 swarms. Broader editor-style boards and transcript-heavy agent execution panes remain later slices.
 
 ### Prerequisites
 
@@ -1783,82 +1783,63 @@ Phase 4 (left rail navigation for mode entry points), Phase 5 (Fleet Command), P
 ### Deliverables
 
 ```
-src/vs/sessions/browser/editors/
-├── atlasEditorRegistry.ts           Register all Atlas EditorInputs
-├── objectiveBoard/
-│   ├── objectiveBoardEditor.ts      DAG visualization of objective decomposition
-│   ├── objectiveBoardEditorInput.ts
-│   └── dagRenderer.ts              Canvas-based DAG node/edge rendering
-├── swarmBoard/
-│   ├── swarmBoardEditor.ts          Live swarm execution board
-│   ├── swarmBoardEditorInput.ts
-│   └── swarmLanes.ts               Lane layout: agents, memory, worktrees, reviews
-├── agentView/
-│   ├── agentViewEditor.ts           Agent transcript + tool calls + diff + cost
-│   └── agentViewEditorInput.ts
+src/vs/sessions/contrib/atlasNavigation/browser/
+├── atlasNavigationModel.ts          Dedicated Tasks / Agents workspace models
+├── atlasCenterShellViewPane.ts      Center-shell routing + rendering for Tasks / Agents / Reviews / Fleet
+└── media/atlasCenterShellViewPane.css
+
+src/vs/sessions/contrib/atlasNavigation/test/node/
+└── atlasNavigationModel.test.ts     Focused Tasks / Agents workspace regressions
 ```
 
 ### Implementation Steps
 
-#### 7.1 — Editor registration pattern
+#### 7A.1 — Tasks workspace
 
-Each center stage mode is an `EditorInput` subclass that opens via `IEditorService`:
+The shipped `Tasks` mode is swarm-rooted and read-only:
 
-```typescript
-// browser/editors/atlasEditorRegistry.ts
+- section-level selection renders a rooted-swarm overview instead of a generic placeholder
+- selected swarm/task/objective renders:
+  - swarm summary and metadata
+  - rooted task lineage
+  - related live agents
+  - authoritative review / merge pressure linked to that rooted lineage
+- objective metadata decorates the workspace but does not replace root-task identity
 
-// Register editor pane descriptors
-Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane)
-    .registerEditorPane(
-        EditorPaneDescriptor.create(ObjectiveBoardEditor, ObjectiveBoardEditorInput.ID, 'Objective Board'),
-        [new SyncDescriptor(ObjectiveBoardEditorInput)]
-    );
-// ... similarly for SwarmBoardEditor, AgentViewEditor, FleetGridEditor, review editors
-```
+#### 7A.2 — Agents workspace
 
-#### 7.2 — Objective board
+The shipped `Agents` mode is execution-focused and read-only:
 
-DAG visualization of an objective's task decomposition tree. Each node is a task with status, agent, and cost. Edges show dependencies.
+- section-level selection renders grouped live execution slices (`Running`, `Blocked`, `Failed`, `Idle / recent`)
+- selected agent renders:
+  - dispatch/task/swarm/status/heartbeat summary
+  - current known worktree / activity / cost only when Atlas already has that bridge state
+  - dispatch-scoped review / merge pressure
+  - pivots back to swarm, task, reviews, and fleet
 
-The DAG renderer needs to:
-1. Accept a tree of `ITaskState` nodes with dependency edges
-2. Compute a layered layout (topological sort → layer assignment → crossing minimization)
-3. Render on an HTML canvas or SVG
-4. Support click-to-select (updates `IFleetManagementService.selectedEntity`)
-5. Support zoom (objective-level → task-level → agent-level)
-6. Update node states in real-time as agents complete work
+#### 7A.3 — Preserve dedicated Review and Fleet workspaces
 
-Implementation approach: Use `<canvas>` with a lightweight layout algorithm. No external library dependency — keep it self-contained. The layout algorithm can be a simple Sugiyama-style layered graph drawing (the task DAGs are typically small, <50 nodes).
+Phase 7A does not collapse the already-shipped center-stage work:
 
-#### 7.3 — Swarm board
+- `Reviews` stays the actionable authoritative review / merge workspace
+- `Fleet` stays the read-only operator command surface
 
-The default execution view for one swarm. Shows:
-- **Agent lane**: Cards for all agents in this swarm (reuse AgentCard)
-- **Task lane**: Pipeline view (queued → executing → reviewing → done)
-- **Memory lane**: Recent governed memory records (decisions, invariants, findings)
-- **Worktree lane**: Active branches and their status
-- **Review lane**: Pending and completed reviews for this swarm
+#### 7A.4 — Later Phase 7 slices
 
-Layout: horizontal lanes stacked vertically, each scrollable independently.
+The broader long-term center-stage roadmap remains later work:
 
-#### 7.4 — Agent execution view
-
-Extends the existing chat transcript rendering for any agent (not just the "active session"). Shows:
-- Live or historical transcript
-- Tool calls with expandable details
-- File diffs inline
-- Cost and time metrics
-- Steer/pause/cancel controls
-
-This reuses the existing `ChatViewPane` rendering infrastructure — the chat widget already knows how to render agent transcripts. The key extension is making it work for any dispatch ID, not just the active session.
+- Objective board / DAG view
+- Swarm board
+- Transcript-heavy agent execution view
+- Other editor-backed center-stage modes that depend on deeper inspector / transcript substrate
 
 ### Validation
 
-- Double-clicking a swarm in the left rail opens the swarm board in center stage
-- Double-clicking an agent opens the agent execution view
-- DAG visualization renders correctly for objectives with 1-50 tasks
-- Node states update in real-time
-- Mode switching is smooth (no flash, no layout jank)
+- Selecting `Tasks` opens a substantive swarm-rooted work surface, not a generic summary placeholder
+- Selecting a swarm/task/objective shows rooted task lineage, related agents, and review / merge pressure truthfully
+- Selecting `Agents` opens a substantive execution surface, not a generic summary placeholder
+- Selecting an agent shows dispatch/task/swarm linkage plus current known heartbeat / worktree / pressure state
+- `Reviews` and `Fleet` continue to route to their already-shipped dedicated workspaces without regression
 
 ---
 
