@@ -265,6 +265,30 @@ The broader center-stage boards remain later work:
 - **Diff View**
 - **Code View** (already exists as a separate editor/modal surface)
 
+### Phase 10A: Sessions Layout Profiles
+
+The shipped Phase 10A wave does not introduce multi-window orchestration yet. It adds sessions-local layout profiles that reshape the existing Atlas shell for different working modes while preserving the same selection and harness state.
+
+Shipped profiles:
+
+- `Operator`
+- `Execution`
+- `Review`
+- `Fleet`
+
+What changes per profile:
+
+- the Atlas header remains visible
+- the left rail remains available through the existing sessions shell
+- center-stage and inspector proportions rebalance via sessions-local CSS/layout composition
+- no workbench-global layout/profile plumbing is introduced
+
+Persistence:
+
+- stored per workspace under `atlas.layoutProfile`
+- selection survives profile changes unchanged
+- `ReviewTargetKind` stays distinct across profile switches
+
 ### Phase 6: Right Inspector
 
 Extend the auxiliary bar to show context for whatever entity is selected:
@@ -329,10 +353,12 @@ interface ISelectedEntity {
 // Session management becomes fleet management
 interface IFleetManagementService {
     readonly selection: IObservable<INavigationSelection>;
+    readonly layoutProfile: IObservable<AtlasLayoutProfile>;
     readonly selectedSection: IObservable<NavigationSection>;
     readonly selectedEntity: IObservable<ISelectedEntity | undefined>;
     readonly selectedEntityKind: IObservable<EntityKind | undefined>;
 
+    selectLayoutProfile(profile: AtlasLayoutProfile): void;
     selectSection(section: NavigationSection): void;
     selectEntity(entity: ISelectedEntity | undefined): void;
     selectAgent(dispatchId: string): void;

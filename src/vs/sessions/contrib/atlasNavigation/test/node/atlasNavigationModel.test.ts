@@ -10,6 +10,7 @@ import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/tes
 import { AgentRole, AgentStatus, type IAgentState, type IFleetState } from '../../../../common/model/agent.js';
 import { AttentionLevel } from '../../../../common/model/attention.js';
 import type { IHealthState } from '../../../../common/model/health.js';
+import { AtlasLayoutProfile } from '../../../../common/model/layout.js';
 import { ObjectiveStatus, type IObjectiveState } from '../../../../common/model/objective.js';
 import { MergeExecutionStatus, type IMergeEntry, type IReviewGateState } from '../../../../common/model/review.js';
 import { EntityKind, NavigationSection, ReviewTargetKind, type INavigationSelection } from '../../../../common/model/selection.js';
@@ -99,6 +100,7 @@ suite('AtlasNavigationModel', () => {
 				]),
 			}),
 			'atlas-project',
+			AtlasLayoutProfile.Operator,
 		);
 
 		assert.strictEqual(model.brandLabel, 'Atlas');
@@ -107,6 +109,7 @@ suite('AtlasNavigationModel', () => {
 		assert.deepStrictEqual(model.breadcrumbs.map(crumb => crumb.label), ['Tasks']);
 		assert.strictEqual(model.pivots.find(pivot => pivot.section === NavigationSection.Tasks)?.selected, true);
 		assert.strictEqual(model.pivots.find(pivot => pivot.section === NavigationSection.Agents)?.count, 1);
+		assert.strictEqual(model.layoutProfiles.find(option => option.profile === AtlasLayoutProfile.Operator)?.selected, true);
 	});
 
 	test('builds phase 9 header context from the selected entity', () => {
@@ -130,11 +133,13 @@ suite('AtlasNavigationModel', () => {
 				]),
 			}),
 			'atlas-project',
+			AtlasLayoutProfile.Execution,
 		);
 
 		assert.strictEqual(model.contextTitle, 'planner · disp-agent-1');
 		assert.strictEqual(model.contextSubtitle, 'Task TASK-ROOT-1 · Swarm TASK-ROOT-1 · running');
 		assert.deepStrictEqual(model.breadcrumbs.map(crumb => crumb.label), ['Agents', 'Agent', 'planner · disp-agent-1']);
+		assert.strictEqual(model.layoutProfiles.find(option => option.profile === AtlasLayoutProfile.Execution)?.selected, true);
 	});
 
 	test('keeps gate and merge review breadcrumbs distinct in the phase 9 header', () => {
@@ -161,11 +166,13 @@ suite('AtlasNavigationModel', () => {
 			{ section: NavigationSection.Reviews, entity: { kind: EntityKind.Review, id: 'disp-review-1', reviewTargetKind: ReviewTargetKind.Gate } },
 			state,
 			'atlas-project',
+			AtlasLayoutProfile.Review,
 		);
 		const mergeModel = buildAtlasHeaderModel(
 			{ section: NavigationSection.Reviews, entity: { kind: EntityKind.Review, id: 'disp-review-1', reviewTargetKind: ReviewTargetKind.Merge } },
 			state,
 			'atlas-project',
+			AtlasLayoutProfile.Review,
 		);
 
 		assert.deepStrictEqual(gateModel.breadcrumbs.map(crumb => crumb.label), ['Reviews', 'Gate', 'axiom-judge gate']);
@@ -189,6 +196,7 @@ suite('AtlasNavigationModel', () => {
 				health: createHealthState({ mode: 'degraded' as IHealthState['mode'], queueDepth: 7, attentionLevel: AttentionLevel.NeedsAction }),
 			}),
 			'atlas-project',
+			AtlasLayoutProfile.Fleet,
 		);
 		const connectedChips = Object.fromEntries(connectedModel.statusChips.map(chip => [chip.id, chip.value]));
 		assert.deepStrictEqual(connectedChips, {
@@ -215,10 +223,41 @@ suite('AtlasNavigationModel', () => {
 				}),
 			}),
 			'atlas-project',
+			AtlasLayoutProfile.Operator,
 		);
 
 		assert.strictEqual(disconnectedModel.fabricLabel, 'No harness fabric attached');
 		assert.strictEqual(disconnectedModel.statusChips.find(chip => chip.id === 'connection')?.value, 'Disconnected');
+	});
+
+	test('keeps disconnected header state truthful across all shipped layout profiles', () => {
+		for (const profile of [
+			AtlasLayoutProfile.Operator,
+			AtlasLayoutProfile.Execution,
+			AtlasLayoutProfile.Review,
+			AtlasLayoutProfile.Fleet,
+		]) {
+			const model = buildAtlasHeaderModel(
+				{ section: NavigationSection.Tasks, entity: undefined },
+				createAtlasStateSnapshot({
+					connection: createConnectionState({
+						state: HarnessConnectionState.Disconnected,
+						mode: 'none',
+						daemonVersion: undefined,
+						schemaVersion: undefined,
+						grantedCapabilities: Object.freeze([]),
+						errorMessage: undefined,
+					}),
+				}),
+				undefined,
+				profile,
+			);
+
+			assert.strictEqual(model.projectLabel, 'No workspace attached');
+			assert.strictEqual(model.fabricLabel, 'No harness fabric attached');
+			assert.strictEqual(model.statusChips.find(chip => chip.id === 'connection')?.value, 'Disconnected');
+			assert.strictEqual(model.layoutProfiles.find(option => option.profile === profile)?.selected, true);
+		}
 	});
 
 	test('keeps tasks swarm-rooted and treats objective metadata as secondary decoration', () => {

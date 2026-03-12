@@ -12,10 +12,12 @@ export interface IFleetManagementService {
 	readonly _serviceBrand: undefined;
 
 	readonly selection: IObservable<AtlasModel.INavigationSelection>;
+	readonly layoutProfile: IObservable<AtlasModel.AtlasLayoutProfile>;
 	readonly selectedSection: IObservable<AtlasModel.NavigationSection>;
 	readonly selectedEntity: IObservable<AtlasModel.ISelectedEntity | undefined>;
 	readonly selectedEntityKind: IObservable<AtlasModel.EntityKind | undefined>;
 
+	selectLayoutProfile(profile: AtlasModel.AtlasLayoutProfile): void;
 	selectSection(section: AtlasModel.NavigationSection): void;
 	selectEntity(entity: AtlasModel.ISelectedEntity | undefined): void;
 	selectAgent(dispatchId: string): void;

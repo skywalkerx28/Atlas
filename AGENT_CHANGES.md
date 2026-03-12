@@ -1,5 +1,60 @@
 # Agent Changes
 
+## Phase 10A
+
+### What landed
+
+- Added the first sessions-local layout profile system for the Atlas shell.
+- Kept the work sessions-only and read-only:
+  - no standard workbench layout/profile integration
+  - no OS-level multi-monitor or window automation
+  - no new write controls
+- The Atlas shell now supports four named profiles:
+  - `Operator`
+  - `Execution`
+  - `Review`
+  - `Fleet`
+
+### Profile and layout model shipped
+
+- Added `AtlasLayoutProfile` in `src/vs/sessions/common/model/layout.ts`.
+- `IFleetManagementService` now owns:
+  - `layoutProfile`
+  - `selectLayoutProfile(...)`
+- `FleetManagementService` persists the selected profile locally with:
+  - storage key `atlas.layoutProfile`
+  - `StorageScope.WORKSPACE`
+  - `StorageTarget.MACHINE`
+- Profile changes do not disturb the current `INavigationSelection`.
+- Distinct `ReviewTargetKind` identity is preserved across profile switches.
+
+### Header and shell composition shipped
+
+- Added a sessions-local profile selector to the Atlas shell header.
+- Reused the current Atlas surfaces only:
+  - header
+  - left rail
+  - center-stage
+  - deep inspector
+- Added explicit frame-class layout composition for:
+  - balanced `Operator`
+  - center/inspector-emphasized `Execution`
+  - review-biased `Review`
+  - fleet-scanning `Fleet`
+
+### Tests added or updated
+
+- `src/vs/sessions/contrib/atlasNavigation/test/node/atlasLayoutProfileModel.test.ts`
+- `src/vs/sessions/contrib/atlasNavigation/test/node/atlasNavigationModel.test.ts`
+- `src/vs/sessions/services/fleet/test/node/fleetManagementService.test.ts`
+
+### Intentionally unimplemented
+
+- any OS-level monitor assignment or automatic window movement
+- any standard workbench layout/profile plumbing
+- any auto-switching of section/entity selection when the profile changes
+- any new write controls or action affordances in the profile selector
+
 ## Phase 9
 
 ### What landed

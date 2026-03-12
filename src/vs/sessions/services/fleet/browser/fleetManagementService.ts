@@ -12,16 +12,19 @@ import { Disposable, MutableDisposable } from '../../../../base/common/lifecycle
 import { autorun, derived, observableValue } from '../../../../base/common/observable.js';
 import { IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
+import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { IWorkspaceContextService } from '../../../../platform/workspace/common/workspace.js';
 import { ViewContainerLocation } from '../../../../workbench/common/views.js';
 import { IPaneCompositePartService } from '../../../../workbench/services/panecomposite/browser/panecomposite.js';
-import { AtlasSelectedEntityKindContext, AtlasSelectedSectionContext } from '../../../common/contextkeys.js';
+import { AtlasLayoutProfileContext, AtlasSelectedEntityKindContext, AtlasSelectedSectionContext } from '../../../common/contextkeys.js';
 import { ATLAS_CENTER_SHELL_CONTAINER_ID } from '../../../common/navigation.js';
+import { AtlasLayoutProfile, isAtlasLayoutProfile } from '../../../common/model/layout.js';
 import { EntityKind, NavigationSection, ReviewTargetKind } from '../../../common/model/selection.js';
 import { HarnessConnectionState, IHarnessService } from '../../harness/common/harnessService.js';
 import { IFleetManagementService } from '../common/fleetManagementService.js';
 
 const CONNECTION_RETRY_DELAYS_MS = Object.freeze([1_000, 5_000, 15_000, 30_000, 60_000]);
+const ATLAS_LAYOUT_PROFILE_STORAGE_KEY = 'atlas.layoutProfile';
 
 export class FleetManagementService extends Disposable implements IFleetManagementService {
 
@@ -32,8 +35,10 @@ export class FleetManagementService extends Disposable implements IFleetManageme
 		section: NavigationSection.Tasks,
 		entity: undefined,
 	});
+	private readonly _layoutProfile = observableValue<AtlasModel.AtlasLayoutProfile>(this, AtlasLayoutProfile.Operator);
 
 	readonly selection = this._selection;
+	readonly layoutProfile = this._layoutProfile;
 	readonly selectedSection = derived(this, reader => this._selection.read(reader).section);
 	readonly selectedEntity = derived(this, reader => this._selection.read(reader).entity);
 	readonly selectedEntityKind = derived(this, reader => this._selection.read(reader).entity?.kind);
@@ -50,15 +55,19 @@ export class FleetManagementService extends Disposable implements IFleetManageme
 		@IPaneCompositePartService private readonly paneCompositePartService: IPaneCompositePartService,
 		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
 		@IContextKeyService contextKeyService: IContextKeyService,
+		@IStorageService private readonly storageService: IStorageService,
 		@ILogService private readonly logService: ILogService,
 	) {
 		super();
 		this.retryDelaysMs = FleetManagementService.retryDelaysMs;
+		this._layoutProfile.set(this.readStoredLayoutProfile(), undefined, undefined);
 
+		const layoutProfileContext = AtlasLayoutProfileContext.bindTo(contextKeyService);
 		const selectedEntityKindContext = AtlasSelectedEntityKindContext.bindTo(contextKeyService);
 		const selectedSectionContext = AtlasSelectedSectionContext.bindTo(contextKeyService);
 
 		this._register(autorun(reader => {
+			layoutProfileContext.set(this.layoutProfile.read(reader));
 			selectedEntityKindContext.set(this.selectedEntityKind.read(reader) ?? '');
 			selectedSectionContext.set(this.selectedSection.read(reader));
 		}));
@@ -66,6 +75,15 @@ export class FleetManagementService extends Disposable implements IFleetManageme
 		this._register(this.workspaceContextService.onDidChangeWorkspaceFolders(() => this.scheduleWorkspaceConnection({ force: true, resetRetry: true })));
 		this._register(this.harnessService.onDidDisconnect(() => this.handleHarnessDisconnect()));
 		this.scheduleWorkspaceConnection({ resetRetry: true });
+	}
+
+	selectLayoutProfile(profile: AtlasModel.AtlasLayoutProfile): void {
+		if (this._layoutProfile.get() === profile) {
+			return;
+		}
+
+		this._layoutProfile.set(profile, undefined, undefined);
+		this.storageService.store(ATLAS_LAYOUT_PROFILE_STORAGE_KEY, profile, StorageScope.WORKSPACE, StorageTarget.MACHINE);
 	}
 
 	selectSection(section: AtlasModel.NavigationSection): void {
@@ -244,6 +262,11 @@ export class FleetManagementService extends Disposable implements IFleetManageme
 	private resetReconnectSchedule(): void {
 		this.reconnectAttempt = 0;
 		this.reconnectHandle.clear();
+	}
+
+	private readStoredLayoutProfile(): AtlasModel.AtlasLayoutProfile {
+		const storedValue = this.storageService.get(ATLAS_LAYOUT_PROFILE_STORAGE_KEY, StorageScope.WORKSPACE);
+		return isAtlasLayoutProfile(storedValue) ? storedValue : AtlasLayoutProfile.Operator;
 	}
 }
 

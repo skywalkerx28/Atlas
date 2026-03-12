@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 export * from './wire.js';
+export * from './layout.js';
 export * from './selection.js';
 export * from './attention.js';
 export * from './objective.js';
@@ -23,6 +24,7 @@ export * from './health.js';
 // service contracts can depend on the canonical model without introducing a runtime edge.
 declare global {
 	namespace AtlasModel {
+		type AtlasLayoutProfile = import('./layout.js').AtlasLayoutProfile;
 		type AttentionLevel = import('./attention.js').AttentionLevel;
 		type EntityKind = import('./selection.js').EntityKind;
 		type NavigationSection = import('./selection.js').NavigationSection;

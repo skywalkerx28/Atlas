@@ -9,6 +9,7 @@ import { basename } from '../../../../base/common/path.js';
 import { AttentionLevel } from '../../../common/model/attention.js';
 import { NavigationSection, EntityKind, ReviewTargetKind, type INavigationSelection } from '../../../common/model/selection.js';
 import { HarnessConnectionState, type IHarnessConnectionInfo } from '../../../services/harness/common/harnessService.js';
+import { buildAtlasLayoutProfileModel, type IAtlasLayoutProfileOption } from './atlasLayoutProfileModel.js';
 import { buildSectionDescriptors } from './atlasNavigationModel.js';
 
 export interface IAtlasHeaderBreadcrumb {
@@ -41,6 +42,7 @@ export interface IAtlasHeaderModel {
 	readonly breadcrumbs: readonly IAtlasHeaderBreadcrumb[];
 	readonly statusChips: readonly IAtlasHeaderStatusChip[];
 	readonly pivots: readonly IAtlasHeaderPivot[];
+	readonly layoutProfiles: readonly IAtlasLayoutProfileOption[];
 }
 
 interface IAtlasHeaderStateSnapshot {
@@ -58,12 +60,14 @@ export function buildAtlasHeaderModel(
 	selection: INavigationSelection,
 	state: IAtlasHeaderStateSnapshot,
 	workspaceName: string | undefined,
+	layoutProfile: AtlasModel.AtlasLayoutProfile,
 ): IAtlasHeaderModel {
 	const criticalSwarms = state.swarms.filter(swarm => swarm.attentionLevel === AttentionLevel.Critical).length;
 	const needsActionSwarms = state.swarms.filter(swarm => swarm.attentionLevel === AttentionLevel.NeedsAction).length;
 	const sectionLabel = sectionDisplayLabel(selection.section);
 	const sectionDescriptors = buildSectionDescriptors(state.connection, state.swarms, state.fleet, state.reviewGates, state.mergeQueue);
 	const context = buildContext(selection, state);
+	const layoutProfileModel = buildAtlasLayoutProfileModel(layoutProfile);
 	const projectLabel = resolveProjectLabel(workspaceName, state.connection);
 	const fabricLabel = state.connection.fabricIdentity
 		? `Fabric ${state.connection.fabricIdentity.fabric_id}`
@@ -103,6 +107,7 @@ export function buildAtlasHeaderModel(
 			selected: descriptor.section === selection.section,
 			attentionLevel: descriptor.attentionLevel,
 		}))),
+		layoutProfiles: layoutProfileModel.options,
 	};
 }
 

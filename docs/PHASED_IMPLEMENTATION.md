@@ -2010,11 +2010,11 @@ Render the header inside the existing sessions center-shell wrapper:
 
 ---
 
-## Phase 10: Multi-Monitor
+## Phase 10: Multi-Monitor Readiness
 
 ### Objective
 
-Support multiple Atlas windows with different view profiles pointing at the same harness fabric.
+Ship sessions-local layout profiles that let operators reshape the existing Atlas shell for different working modes without touching the standard workbench or attempting OS-level monitor automation.
 
 ### Prerequisites
 
@@ -2023,80 +2023,96 @@ Phase 7 (all center stage modes), Phase 8 (inspector), Phase 9 (titlebar).
 ### Deliverables
 
 ```
-src/vs/sessions/services/windowProfile/
-├── common/
-│   └── windowProfileService.ts       IWindowProfileService: named profiles
-└── browser/
-    └── windowProfileService.ts       Implementation
+src/vs/sessions/common/model/
+└── layout.ts                         AtlasLayoutProfile enum
 
-src/vs/sessions/electron-browser/
-    └── sessions.main.ts              (modify: support opening multiple windows with profiles)
+src/vs/sessions/services/fleet/
+├── common/
+│   └── fleetManagementService.ts     layoutProfile observable + selector contract
+└── browser/
+    └── fleetManagementService.ts     workspace-local profile persistence
+
+src/vs/sessions/contrib/atlasNavigation/browser/
+├── atlasLayoutProfileModel.ts        profile descriptors + frame-class layout mapping
+├── atlasHeaderModel.ts               profile selector state in the Atlas header
+├── atlasCenterShellViewPane.ts       profile-aware header rendering + layout composition
+└── media/
+    └── atlasCenterShellViewPane.css  sessions-local profile layout styles
 ```
 
 ### Implementation Steps
 
-#### 10.1 — Window profiles
+#### 10A.1 — Sessions-local layout profiles
 
 ```typescript
-export interface IWindowProfile {
-    readonly name: string;
-    readonly leftRailViews: readonly string[];     // view container IDs to show
-    readonly centerStageMode: string;               // default editor to open
-    readonly rightInspector: boolean;               // show auxiliary bar
-    readonly bottomOps: boolean;                    // show panel
+export const enum AtlasLayoutProfile {
+    Operator = 'operator',
+    Execution = 'execution',
+    Review = 'review',
+    Fleet = 'fleet',
 }
-
-export const BUILTIN_PROFILES: readonly IWindowProfile[] = [
-    {
-        name: 'Operator',
-        leftRailViews: ['atlas.swarmsContainer', 'atlas.tasksContainer', 'atlas.fleetContainer'],
-        centerStageMode: 'atlas.objectiveBoard',
-        rightInspector: true,
-        bottomOps: true,
-    },
-    {
-        name: 'Executor',
-        leftRailViews: ['atlas.agentsContainer', 'atlas.tasksContainer'],
-        centerStageMode: 'atlas.agentView',
-        rightInspector: true,
-        bottomOps: true,
-    },
-    {
-        name: 'Reviewer',
-        leftRailViews: ['atlas.reviewsContainer', 'atlas.mergesContainer'],
-        centerStageMode: 'atlas.postReview',
-        rightInspector: true,
-        bottomOps: false,
-    },
-    {
-        name: 'Ops',
-        leftRailViews: ['atlas.fleetContainer', 'atlas.deploymentsContainer'],
-        centerStageMode: 'atlas.fleetGrid',
-        rightInspector: true,
-        bottomOps: true,
-    },
-];
 ```
 
-#### 10.2 — Multi-window support
+Ship these four explicit profiles:
 
-Each window gets its own `IHarnessService` instance, but they can connect to the same harness workspace. Different windows show different profiles (different view configurations) of the same underlying data.
+- `Operator`
+- `Execution`
+- `Review`
+- `Fleet`
 
-The Electron main process (`sessions.ts` / `sessions.main.ts`) already supports the sessions window. Extend it to accept a profile parameter when opening additional windows:
+Each profile reshapes only the existing sessions surfaces:
 
-```typescript
-// Command: "Atlas: Open New Window with Profile..."
-// Opens a QuickPick of available profiles
-// Creates a new BrowserWindow with the selected profile
-// The new window connects to the same harness fabric
+- Atlas header
+- left rail
+- center-stage workspace
+- deep inspector
+
+#### 10A.2 — Sessions-local persistence
+
+Persist the selected profile locally for the current workspace:
+
+- storage key: `atlas.layoutProfile`
+- scope: `StorageScope.WORKSPACE`
+- target: `StorageTarget.MACHINE`
+
+Profile switching must preserve the current `INavigationSelection`, including distinct `ReviewTargetKind` identity for gate vs merge targets.
+
+#### 10A.3 — Header selector and layout composition
+
+Add a sessions-local profile selector to the Atlas header and drive CSS/layout composition from it:
+
 ```
+[Atlas / project / fabric] │ [section / selection breadcrumb] │ [status chips]
+[Tasks] [Agents] [Reviews] [Fleet]                     [Operator] [Execution] [Review] [Fleet]
+```
+
+Shipped profile intent:
+
+- `Operator`: balanced default with center-stage and inspector both visible
+- `Execution`: emphasize center-stage and inspector for following one swarm/agent deeply
+- `Review`: bias the shell toward review workspaces plus supporting inspector context
+- `Fleet`: bias the shell toward fleet scanning and operational overview
 
 ### Validation
 
-- Open two windows with different profiles (Operator + Reviewer)
-- Both windows show live data from the same harness
-- Actions in one window (approve review) reflect in the other window
-- Each window shows the correct views for its profile
+- The sessions shell supports `Operator`, `Execution`, `Review`, and `Fleet`
+- Profile switching is deterministic and read-only
+- Selected profile persists locally per workspace
+- Current selection survives profile changes
+- Review target kind stays distinct across profile changes
+- Existing `Tasks`, `Agents`, `Reviews`, `Fleet`, and inspector surfaces do not regress
+
+### Not Shipped In 10A
+
+- OS-level monitor assignment
+- automatic window movement
+- standard workbench layout/profile integration
+- any new write controls
+- any multi-window orchestration
+
+### Future Multi-Window Phase
+
+Actual multi-window orchestration remains later work. When Atlas reaches that phase, it can reuse the same `AtlasLayoutProfile` model rather than inventing a second layout taxonomy.
 
 ---
 

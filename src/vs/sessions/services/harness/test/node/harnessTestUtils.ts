@@ -3,10 +3,13 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+/* eslint-disable local/code-import-patterns -- Node-side harness tests intentionally stitch together sessions bridge contracts and common model enums for deterministic fixtures. */
+
 import * as fs from 'fs/promises';
 import * as net from 'net';
 import * as os from 'os';
 import { dirname, join } from '../../../../../base/common/path.js';
+import { MemoryRecordType } from '../../../../common/model/wire.js';
 import {
 	HARNESS_JSONRPC_VERSION,
 	HARNESS_PROTOCOL_VERSION,
@@ -614,7 +617,7 @@ export function createAgentActivityResult(overrides: Partial<IAgentActivityGetRe
 
 export function createMemoryListResult(overrides: Partial<IMemoryListResult> = {}): IMemoryListResult {
 	const body: AtlasModel.IWireMemoryRecord['body'] = {
-		memory_type: 'decision' as AtlasModel.IWireMemoryRecord['body']['memory_type'],
+		memory_type: MemoryRecordType.Decision,
 		body: {
 			decision_text: 'Keep the bridge read-only.',
 			scope_paths: Object.freeze(['src/vs/sessions']),
@@ -624,7 +627,7 @@ export function createMemoryListResult(overrides: Partial<IMemoryListResult> = {
 	const record: AtlasModel.IWireMemoryRecord = {
 		header: {
 			record_id: 'mem-1',
-			memory_type: 'decision' as AtlasModel.IWireMemoryRecord['header']['memory_type'],
+			memory_type: MemoryRecordType.Decision,
 			scope: 'planner_tree' as AtlasModel.IWireMemoryRecord['header']['scope'],
 			authority: 'evidence_accepted' as AtlasModel.IWireMemoryRecord['header']['authority'],
 			lifecycle: 'accepted' as AtlasModel.IWireMemoryRecord['header']['lifecycle'],

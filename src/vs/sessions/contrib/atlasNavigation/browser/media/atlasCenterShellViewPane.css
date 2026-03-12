@@ -116,6 +116,14 @@
 	gap: 8px;
 }
 
+.atlas-shell-header-controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px 18px;
+}
+
 .atlas-shell-header-pivot {
 	display: inline-flex;
 	align-items: center;
@@ -151,6 +159,47 @@
 	font-weight: 700;
 }
 
+.atlas-shell-header-profiles {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
+.atlas-shell-header-profiles-label {
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: color-mix(in srgb, var(--vscode-foreground) 64%, transparent);
+}
+
+.atlas-shell-header-profile-options {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.atlas-shell-header-profile-option {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 7px 12px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 72%, transparent);
+	background: color-mix(in srgb, var(--vscode-sideBar-background) 84%, transparent);
+	color: inherit;
+	font-size: 12px;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+.atlas-shell-header-profile-option-selected {
+	outline: 1px solid color-mix(in srgb, var(--vscode-focusBorder) 78%, transparent);
+	box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 28%, transparent);
+}
+
 .atlas-center-shell-layout {
 	display: grid;
 	grid-template-columns: minmax(0, 2.2fr) minmax(280px, 0.95fr);
@@ -174,6 +223,53 @@
 	border-left: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 72%, transparent);
 	background:
 		linear-gradient(180deg, color-mix(in srgb, var(--vscode-sideBar-background) 95%, transparent), color-mix(in srgb, var(--vscode-sideBar-background) 88%, transparent));
+}
+
+.atlas-layout-profile-operator .atlas-center-shell-layout {
+	grid-template-columns: minmax(0, 2.2fr) minmax(280px, 0.95fr);
+}
+
+.atlas-layout-profile-execution .atlas-shell-header {
+	gap: 12px;
+	padding-bottom: 12px;
+}
+
+.atlas-layout-profile-execution .atlas-center-shell-layout {
+	grid-template-columns: minmax(0, 2.55fr) minmax(340px, 1.2fr);
+}
+
+.atlas-layout-profile-execution .atlas-center-shell-root {
+	padding-inline: 24px;
+}
+
+.atlas-layout-profile-review .atlas-shell-header-top {
+	grid-template-columns: minmax(180px, 0.9fr) minmax(240px, 1fr) minmax(320px, 1.3fr);
+}
+
+.atlas-layout-profile-review .atlas-center-shell-layout {
+	grid-template-columns: minmax(0, 2fr) minmax(360px, 1.35fr);
+}
+
+.atlas-layout-profile-review .atlas-center-shell-inspector-region {
+	background:
+		radial-gradient(circle at top right, color-mix(in srgb, var(--vscode-editorInfo-foreground) 8%, transparent), transparent 34%),
+		linear-gradient(180deg, color-mix(in srgb, var(--vscode-sideBar-background) 95%, transparent), color-mix(in srgb, var(--vscode-sideBar-background) 88%, transparent));
+}
+
+.atlas-layout-profile-fleet .atlas-shell-header-top {
+	grid-template-columns: minmax(180px, 0.9fr) minmax(220px, 0.9fr) minmax(360px, 1.45fr);
+}
+
+.atlas-layout-profile-fleet .atlas-center-shell-layout {
+	grid-template-columns: minmax(0, 2.85fr) minmax(260px, 0.85fr);
+}
+
+.atlas-layout-profile-fleet .atlas-center-shell-root {
+	padding-inline: 20px;
+}
+
+.atlas-layout-profile-fleet .atlas-fleet-command-groups {
+	grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 }
 
 .atlas-center-shell-root {
@@ -1241,6 +1337,11 @@
 	}
 
 	.atlas-shell-header-status {
+		justify-content: flex-start;
+	}
+
+	.atlas-shell-header-controls,
+	.atlas-shell-header-profiles {
 		justify-content: flex-start;
 	}
 

@@ -13,13 +13,15 @@ import { URI } from '../../../../../base/common/uri.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
 import { MockContextKeyService } from '../../../../../platform/keybinding/test/common/mockKeybindingService.js';
 import { NullLogService } from '../../../../../platform/log/common/log.js';
+import { InMemoryStorageService } from '../../../../../platform/storage/common/storage.js';
 import { IWorkspace, IWorkspaceContextService, IWorkspaceFolder, WorkbenchState } from '../../../../../platform/workspace/common/workspace.js';
 import { ViewContainerLocation } from '../../../../../workbench/common/views.js';
 import type { IPaneCompositePartService } from '../../../../../workbench/services/panecomposite/browser/panecomposite.js';
 import { ATLAS_CENTER_SHELL_CONTAINER_ID } from '../../../../common/navigation.js';
+import { AtlasLayoutProfile } from '../../../../common/model/layout.js';
 import { EntityKind, NavigationSection, ReviewTargetKind } from '../../../../common/model/selection.js';
 import { PoolMode } from '../../../../common/model/health.js';
-import { AtlasSelectedEntityKindContext, AtlasSelectedSectionContext } from '../../../../common/contextkeys.js';
+import { AtlasLayoutProfileContext, AtlasSelectedEntityKindContext, AtlasSelectedSectionContext } from '../../../../common/contextkeys.js';
 import { HarnessConnectionState, type IHarnessConnectionInfo, type IHarnessService } from '../../../harness/common/harnessService.js';
 import type { IHarnessTaskTree } from '../../../harness/common/harnessTypes.js';
 import { FleetManagementService } from '../../browser/fleetManagementService.js';
@@ -32,11 +34,13 @@ suite('FleetManagementService', () => {
 		const paneCompositePartService = new TestPaneCompositePartService();
 		const workspaceContextService = new TestWorkspaceContextService([workspaceFolder('/workspace-a')]);
 		const contextKeyService = new MockContextKeyService();
+		const storageService = store.add(new InMemoryStorageService());
 		const service = store.add(new FleetManagementService(
 			harnessService as unknown as IHarnessService,
 			paneCompositePartService as unknown as IPaneCompositePartService,
 			workspaceContextService as unknown as IWorkspaceContextService,
 			contextKeyService,
+			storageService,
 			new NullLogService(),
 		));
 
@@ -45,8 +49,10 @@ suite('FleetManagementService', () => {
 		assert.deepStrictEqual(harnessService.connectCalls.map(uri => uri.fsPath), ['/workspace-a']);
 		assert.strictEqual(service.selection.get().section, NavigationSection.Tasks);
 		assert.strictEqual(service.selection.get().entity, undefined);
+		assert.strictEqual(service.layoutProfile.get(), AtlasLayoutProfile.Operator);
 		assert.strictEqual(contextKeyService.getContextKeyValue(AtlasSelectedSectionContext.key), NavigationSection.Tasks);
 		assert.strictEqual(contextKeyService.getContextKeyValue(AtlasSelectedEntityKindContext.key), '');
+		assert.strictEqual(contextKeyService.getContextKeyValue(AtlasLayoutProfileContext.key), AtlasLayoutProfile.Operator);
 	});
 
 	test('selection methods stay deterministic and reveal the read-only center shell', async () => {
@@ -54,11 +60,13 @@ suite('FleetManagementService', () => {
 		const paneCompositePartService = new TestPaneCompositePartService();
 		const workspaceContextService = new TestWorkspaceContextService([workspaceFolder('/workspace-a')]);
 		const contextKeyService = new MockContextKeyService();
+		const storageService = store.add(new InMemoryStorageService());
 		const service = store.add(new FleetManagementService(
 			harnessService as unknown as IHarnessService,
 			paneCompositePartService as unknown as IPaneCompositePartService,
 			workspaceContextService as unknown as IWorkspaceContextService,
 			contextKeyService,
+			storageService,
 			new NullLogService(),
 		));
 
@@ -101,15 +109,72 @@ suite('FleetManagementService', () => {
 		]);
 	});
 
+	test('persists the selected layout profile locally for the workspace', async () => {
+		const harnessService = store.add(new TestHarnessService());
+		const storageService = store.add(new InMemoryStorageService());
+		const workspaceContextService = new TestWorkspaceContextService([workspaceFolder('/workspace-a')]);
+		const firstService = store.add(new FleetManagementService(
+			harnessService as unknown as IHarnessService,
+			new TestPaneCompositePartService() as unknown as IPaneCompositePartService,
+			workspaceContextService as unknown as IWorkspaceContextService,
+			new MockContextKeyService(),
+			storageService,
+			new NullLogService(),
+		));
+
+		await flushAsync();
+		firstService.selectLayoutProfile(AtlasLayoutProfile.Review);
+		assert.strictEqual(firstService.layoutProfile.get(), AtlasLayoutProfile.Review);
+
+		const secondService = store.add(new FleetManagementService(
+			harnessService as unknown as IHarnessService,
+			new TestPaneCompositePartService() as unknown as IPaneCompositePartService,
+			workspaceContextService as unknown as IWorkspaceContextService,
+			new MockContextKeyService(),
+			storageService,
+			new NullLogService(),
+		));
+
+		await flushAsync();
+		assert.strictEqual(secondService.layoutProfile.get(), AtlasLayoutProfile.Review);
+	});
+
+	test('preserves the current selection when the layout profile changes', async () => {
+		const harnessService = store.add(new TestHarnessService());
+		const service = store.add(new FleetManagementService(
+			harnessService as unknown as IHarnessService,
+			new TestPaneCompositePartService() as unknown as IPaneCompositePartService,
+			new TestWorkspaceContextService([workspaceFolder('/workspace-a')]) as unknown as IWorkspaceContextService,
+			new MockContextKeyService(),
+			store.add(new InMemoryStorageService()),
+			new NullLogService(),
+		));
+
+		await flushAsync();
+		service.selectReview('disp-review-1', ReviewTargetKind.Merge);
+		const selectionBefore = service.selection.get();
+
+		service.selectLayoutProfile(AtlasLayoutProfile.Execution);
+		assert.deepStrictEqual(service.selection.get(), selectionBefore);
+		const entity = service.selection.get().entity;
+		assert.strictEqual(entity?.kind, EntityKind.Review);
+		if (entity?.kind !== EntityKind.Review) {
+			throw new Error('expected review selection to survive layout profile change');
+		}
+		assert.strictEqual(entity.reviewTargetKind, ReviewTargetKind.Merge);
+	});
+
 	test('reconnects on workspace-root changes and disconnects when the workspace becomes empty', async () => {
 		const harnessService = store.add(new TestHarnessService());
 		const paneCompositePartService = new TestPaneCompositePartService();
 		const workspaceContextService = new TestWorkspaceContextService([workspaceFolder('/workspace-a')]);
+		const storageService = store.add(new InMemoryStorageService());
 		store.add(new FleetManagementService(
 			harnessService as unknown as IHarnessService,
 			paneCompositePartService as unknown as IPaneCompositePartService,
 			workspaceContextService as unknown as IWorkspaceContextService,
 			new MockContextKeyService(),
+			storageService,
 			new NullLogService(),
 		));
 
@@ -135,6 +200,7 @@ suite('FleetManagementService', () => {
 				new TestPaneCompositePartService() as unknown as IPaneCompositePartService,
 				workspaceContextService as unknown as IWorkspaceContextService,
 				new MockContextKeyService(),
+				store.add(new InMemoryStorageService()),
 				new NullLogService(),
 			));
 
@@ -158,6 +224,7 @@ suite('FleetManagementService', () => {
 				new TestPaneCompositePartService() as unknown as IPaneCompositePartService,
 				workspaceContextService as unknown as IWorkspaceContextService,
 				new MockContextKeyService(),
+				store.add(new InMemoryStorageService()),
 				new NullLogService(),
 			));
 
