@@ -1,5 +1,93 @@
 # Agent Changes
 
+## Phase 3
+
+### What landed
+
+- Added a pure, deterministic swarm derivation layer at `src/vs/sessions/services/harness/electron-browser/harnessSwarmDerivation.ts`.
+- `HarnessService.swarms` is now populated from current bridge state instead of remaining empty/default.
+- Swarm identity is root-task-first:
+  - `swarmId = rootTaskId`
+  - `task.list` stays root-only in semantics
+  - Atlas expands each root with `task.tree` and derives one swarm per rooted lineage
+- Objective linkage is attached as metadata only and fails closed on ambiguity:
+  - Atlas attaches objective metadata only when exactly one objective matches `rootTaskId` and task/tree references do not conflict
+  - ambiguous or conflicting objective linkage is omitted instead of guessed
+- The derived swarm contract now carries the minimum truthful Phase 3 summaries Atlas needs for later UI work:
+  - `objectiveStatus`
+  - `objectiveProblemStatement`
+  - `rootTaskStatus`
+  - `mergeDispatchIds`
+  - `reviewNeeded`
+  - `mergeBlocked`
+  - `hasFailures`
+  - `hasBlockedTasks`
+- `HarnessService.getSwarm()` now resolves from the derived swarm cache rather than pretending the daemon has a swarm authority.
+
+### Derivation rules shipped
+
+- One swarm per rooted task tree.
+- Tasks belong to a swarm iff they are in that rooted lineage.
+- Agents belong to a swarm iff their `taskId` belongs to that rooted lineage.
+- Review gates and merge entries belong to a swarm iff their `taskId` belongs to that rooted lineage.
+- Objective metadata attaches iff there is a unique non-conflicting objective for `rootTaskId`.
+- Swarm phase is derived deterministically:
+  - `failed` if any task failed/cancelled or any merge is blocked
+  - `reviewing` if any review gate awaits review / is review-blocked, any task is reviewing, or the attached objective is reviewing
+  - `merging` if merge entries are pending or merge-started
+  - `completed` if all known leaf work is complete and no incomplete tasks remain
+  - `planning` if all known tasks are queued
+  - otherwise `executing`
+- Swarm attention is derived deterministically:
+  - `critical` for failures or merge-blocked state
+  - `needsAction` for review-needed, blocked tasks, blocked agents, or degraded pool health
+  - `completed` for completed swarms with no outstanding blockers
+  - `active` for running agents, queued/executing tasks, or merges in flight
+  - otherwise `idle`
+
+### Tests added or updated
+
+- `src/vs/sessions/services/harness/test/node/harnessSwarmDerivation.test.ts`
+- `src/vs/sessions/services/harness/test/node/harnessService.test.ts`
+
+### Daemon methods consumed
+
+- No new daemon methods beyond Phase 2 Wave C
+- Swarm derivation consumes already-cached results from:
+  - `initialize`
+  - `daemon.ping`
+  - `fleet.snapshot`, `fleet.subscribe`, `fleet.unsubscribe`
+  - `health.get`, `health.subscribe`, `health.unsubscribe`
+  - `objective.list`, `objective.get`, `objective.subscribe`, `objective.unsubscribe`
+  - `review.list`, `review.get`, `review.subscribe`, `review.unsubscribe`
+  - `merge.list`, `merge.get`, `merge.subscribe`, `merge.unsubscribe`
+  - `task.get`, `task.list`, `task.tree`
+
+### Intentionally unimplemented
+
+- Phase 4+ UI surfaces (left rail, fleet command, review panes, inspector, titlebar)
+- `IFleetManagementService` runtime implementation and selection/navigation wiring
+- Cost/activity/transcript adoption
+- Memory, result packet, and worktree inspection reads
+- All write/control families remain fail-closed and `writesEnabled` remains `false`
+
+### Verification
+
+- `git diff --check`: passed
+- `node build/checker/layersChecker.ts`: passed
+- `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run compile-check-ts-native`: failed only on pre-existing unrelated noise in `src/vs/server/node/webClientServer.ts`
+  - `src/vs/server/node/webClientServer.ts(17,84)` `TS6133` `builtinExtensionsPath`
+  - `src/vs/server/node/webClientServer.ts(29,10)` `TS6133` `IExtensionManifest`
+- Focused harness tests:
+  - `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run test-node -- --runGlob "vs/sessions/services/harness/test/node/*.test.js"`: passed (`24 passing`)
+  - In this isolated worktree, the stock node test runner needed a temporary local `out/` overlay backed by the main repo’s compiled `out/` plus a narrow TypeScript transpile of `src/vs/sessions/common/model/**` and `src/vs/sessions/services/harness/**` so the harness tests executed real JS instead of an empty glob
+
+### Atlas vs daemon contract mismatches
+
+- The daemon still does not expose a first-class swarm authority. Atlas correctly derives swarms from rooted task lineage instead of asking the daemon for swarm objects.
+- The daemon still exposes no public `task.subscribe`, so rooted lineage refresh remains best-effort from adjacent daemon activity and explicit reads.
+- Current bridge state still lacks truthful memory/activity/artifact/worktree semantics for swarm lanes, so Phase 3 keeps those out of the derivation instead of inventing them.
+
 ## Phase 2 Wave C
 
 ### What landed
@@ -14,7 +102,7 @@
   - review gates from `review.list` / `review.get` / `review.update`
   - merge queue from `merge.list` / `merge.get` / `merge.update`
   - rooted task lineage from `task.list`, `task.tree`, and `task.get`
-- `task.list` is kept root-only in semantics. Atlas expands each root with `task.tree` and stores that rooted lineage primitive for Phase 3, but does not derive swarms yet.
+- `task.list` is kept root-only in semantics. Atlas expands each root with `task.tree` and stores that rooted lineage primitive; Phase 3 now derives swarms from it.
 - Polling fallback stays narrow and read-only. It still surfaces only fleet and derived health from SQLite; there is no polling mirror for objectives, reviews, merge state, or rooted task lineage.
 - Added focused Wave C node tests for fabric-identity validation, new daemon read families, notification handling, and rooted task mapping.
 
@@ -57,7 +145,7 @@
 - All write/control families remain fail-closed and `writesEnabled` remains `false`
 - Any CLI subprocess write path
 - Any direct SQLite write path
-- Phase 3 swarm derivation
+- Dedicated swarm derivation beyond the current Phase 3 model/service layer
 - Advisory review queue derivation
 - Transcript / activity streaming
 - Memory inspection

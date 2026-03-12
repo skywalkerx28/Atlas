@@ -57,6 +57,7 @@ import {
 	toPresentationTaskFromDetail,
 	toPresentationTasks,
 } from './harnessMapper.js';
+import { deriveSwarms } from './harnessSwarmDerivation.js';
 import { HarnessSqlitePoller } from './harnessSqlitePoller.js';
 
 const DAEMON_REQUIRED_ERROR = 'Harness daemon required; Atlas is in read-only mode.';
@@ -206,8 +207,8 @@ export class HarnessService extends Disposable implements IHarnessService {
 		}
 	}
 
-	async getSwarm(_swarmId: string): Promise<AtlasModel.ISwarmState | undefined> {
-		return undefined;
+	async getSwarm(swarmId: string): Promise<AtlasModel.ISwarmState | undefined> {
+		return this.swarms.get().find(swarm => swarm.swarmId === swarmId);
 	}
 
 	async getTask(taskId: string): Promise<AtlasModel.ITaskState | undefined> {
@@ -627,21 +628,24 @@ export class HarnessService extends Disposable implements IHarnessService {
 		this.publishReviewState();
 		this.publishMergeState();
 		this.cost.set(EMPTY_COST_STATE, undefined, undefined);
-		this.swarms.set(EMPTY_SWARMS, undefined, undefined);
 		this.advisoryReviewQueue.set(EMPTY_REVIEWS, undefined, undefined);
+		this.publishSwarmState();
 	}
 
 	private publishFleetAndHealthState(): void {
 		this.fleet.set(toPresentationFleet(this.fleetSnapshotState), undefined, undefined);
-		this.publishHealthState();
+		this.health.set(toPresentationHealth(this.fleetSnapshotState, this.healthSnapshotState), undefined, undefined);
+		this.publishSwarmState();
 	}
 
 	private publishHealthState(): void {
 		this.health.set(toPresentationHealth(this.fleetSnapshotState, this.healthSnapshotState), undefined, undefined);
+		this.publishSwarmState();
 	}
 
 	private publishObjectiveState(): void {
 		this.objectives.set(toPresentationObjectives(this.objectiveRecords), undefined, undefined);
+		this.publishSwarmState();
 	}
 
 	private publishTaskState(): void {
@@ -649,14 +653,33 @@ export class HarnessService extends Disposable implements IHarnessService {
 			.map(rootTaskId => this.taskTrees.get(rootTaskId))
 			.filter((value): value is ITaskTreeResult => value !== undefined);
 		this.tasks.set(toPresentationTasks(taskTrees, this.fleetSnapshotState.workers), undefined, undefined);
+		this.publishSwarmState();
 	}
 
 	private publishReviewState(): void {
 		this.reviewGates.set(toPresentationReviewGates(this.reviewRecords), undefined, undefined);
+		this.publishSwarmState();
 	}
 
 	private publishMergeState(): void {
 		this.mergeQueue.set(toPresentationMergeEntries(this.mergeRecords), undefined, undefined);
+		this.publishSwarmState();
+	}
+
+	private publishSwarmState(): void {
+		const taskTrees = this.rootedTaskIds
+			.map(rootTaskId => this.taskTrees.get(rootTaskId))
+			.filter((value): value is ITaskTreeResult => value !== undefined)
+			.map(taskTree => toBridgeTaskTree(taskTree));
+		this.swarms.set(deriveSwarms(
+			taskTrees,
+			this.tasks.get(),
+			this.objectives.get(),
+			this.fleet.get(),
+			this.reviewGates.get(),
+			this.mergeQueue.get(),
+			this.health.get(),
+		), undefined, undefined);
 	}
 
 	private requestTaskRefresh(): void {

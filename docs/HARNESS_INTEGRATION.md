@@ -82,9 +82,9 @@ When later daemon method families exist, Atlas can delegate writes through the d
 Atlas implements this as `IHarnessService` — a singleton service in `sessions/services/harness/` that manages a connection to one harness workspace and exposes harness state as observables. In the current merged bridge:
 
 - daemon mode validates `initialize.fabric_identity` against the opened workspace and fails closed on cross-project mismatch
-- daemon mode populates fleet, health, objectives, review gates, merge queue, and rooted task lineage
+- daemon mode populates fleet, health, objectives, review gates, merge queue, rooted task lineage, and derived swarms
 - polling mode remains intentionally narrow and read-only: it only populates fleet and derived health from SQLite
-- unsupported observables like swarms, advisory review queue, transcripts, memory, result packets, and worktree inspection remain explicit empty/default surfaces until the daemon exposes truthful read families for them
+- unsupported observables like advisory review queue, transcripts, memory, result packets, and worktree inspection remain explicit empty/default surfaces until the daemon exposes truthful read families for them
 
 ### Swarm Model
 
@@ -92,13 +92,14 @@ Atlas should expose a first-class `Task Swarm` abstraction built from existing h
 
 At the data layer, a swarm is derived from:
 
-- one root objective or root task
-- the descendant task DAG from `planner_hierarchy` and `task_hierarchy`
-- the active and historical dispatches in `dispatch_queue` and `dispatch_journal`
-- the owned worktrees in `worker_registry`
-- the swarm memory lane in `memory_records`, `memory_reads`, `memory_links`, and `memory_promotions`
-- the swarm event stream in `workspace_event_queue` and activity JSONL
-- the swarm review and promotion state in `review_queue`, `review_candidates`, and `merge_queue`
+- one rooted task tree
+- objective metadata attached by `objectives.root_task_id` when it is uniquely non-conflicting
+- the active agents in `worker_registry`
+- the authoritative review-gate state in `review_candidates`
+- the authoritative merge state in `merge_queue`
+- current pool health from `health.*`
+
+Current merged Phase 3 note: Atlas now derives swarms inside `HarnessService` from rooted task trees plus the cached objective, fleet, review, merge, and health state. The daemon does not expose a swarm object. Swarm identity is always `rootTaskId`, never `objectiveId`.
 
 The implication for Atlas is simple: the UI should group data by swarm first, then let the operator drill down to task, agent, run, diff, or file. Files and sessions are subordinate inspection surfaces, not the primary unit of navigation.
 
@@ -109,7 +110,7 @@ The implication for Atlas is simple: the UI should group data by swarm first, th
 The central bridge between Atlas and the harness. Manages:
 
 - **Connection lifecycle**: Attempts daemon socket at `$AXIOM_HARNESS_SOCK` or `~/.codex/harness.sock`; validates `initialize.fabric_identity.repo_root` against the opened workspace; falls back to resolving `router.db` via the harness path resolution chain only when the daemon is absent or unreachable
-- **Daemon mode (Wave C)**: Performs `initialize`, validates `fabric_identity`, performs `daemon.ping`, loads `fleet.snapshot`, `health.get`, `objective.list`, `review.list`, `merge.list`, and `task.list`, expands each root task with `task.tree`, subscribes to `fleet.delta`, `health.update`, `objective.update`, `review.update`, and `merge.update`, and keeps unsupported observables empty/default
+- **Daemon mode (Wave C / Phase 3)**: Performs `initialize`, validates `fabric_identity`, performs `daemon.ping`, loads `fleet.snapshot`, `health.get`, `objective.list`, `review.list`, `merge.list`, and `task.list`, expands each root task with `task.tree`, subscribes to `fleet.delta`, `health.update`, `objective.update`, `review.update`, and `merge.update`, and derives `swarms` from that cached state while keeping unsupported observables empty/default
 - **Polling mode** (fallback): Polls read-only SQLite tables for fleet-relevant state on an interval
 - **Write operations (Wave C)**: All writes fail closed. Atlas does not shell out to `axiom-harness`, invoke `orchestrator-backend.sh`, or write `dispatch_control`
 - **State aggregation**: Mirrors the TUI's `FleetSnapshot` pattern — assembles all data into a single reactive state tree
@@ -172,7 +173,7 @@ interface IHarnessService {
 }
 ```
 
-Current merged behavior note: `task.list` is treated as a root-task anchor list only, not a complete global task universe. Atlas expands those roots with `task.tree` and stores the rooted lineage as the primitive that Phase 3 will later derive swarms from.
+Current merged behavior note: `task.list` is treated as a root-task anchor list only, not a complete global task universe. Atlas expands those roots with `task.tree` and derives one swarm per rooted lineage with `swarmId = rootTaskId`.
 
 ---
 

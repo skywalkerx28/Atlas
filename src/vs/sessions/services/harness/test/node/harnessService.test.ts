@@ -232,8 +232,21 @@ suite('HarnessService', () => {
 			assert.deepStrictEqual(service.tasks.get().map(task => task.taskId), ['TASK-ROOT-1', 'TASK-CHILD-1']);
 			assert.strictEqual(service.health.get().mode, 'disk_pressure');
 			assert.strictEqual(service.health.get().attentionLevel, 3);
+			assert.strictEqual(service.swarms.get().length, 1);
+			assert.deepStrictEqual(service.swarms.get()[0].taskIds, ['TASK-ROOT-1', 'TASK-CHILD-1']);
+			assert.deepStrictEqual(service.swarms.get()[0].agentDispatchIds, ['disp-root']);
+			assert.deepStrictEqual(service.swarms.get()[0].reviewDispatchIds, ['disp-review-wave-c']);
+			assert.deepStrictEqual(service.swarms.get()[0].mergeDispatchIds, ['disp-merge-wave-c']);
+			assert.strictEqual(service.swarms.get()[0].swarmId, 'TASK-ROOT-1');
+			assert.strictEqual(service.swarms.get()[0].rootTaskId, 'TASK-ROOT-1');
+			assert.strictEqual(service.swarms.get()[0].objectiveId, 'OBJ-WC-1');
+			assert.strictEqual(service.swarms.get()[0].phase, 'reviewing');
+			assert.strictEqual(service.swarms.get()[0].attentionLevel, 3);
+			assert.strictEqual(service.swarms.get()[0].reviewNeeded, true);
+			assert.strictEqual(service.swarms.get()[0].mergeBlocked, false);
 
 			assert.strictEqual((await service.getObjective('OBJ-WC-1'))?.objectiveId, 'OBJ-WC-1');
+			assert.strictEqual((await service.getSwarm('TASK-ROOT-1'))?.swarmId, 'TASK-ROOT-1');
 			assert.strictEqual((await service.getTask('TASK-ROOT-1'))?.taskId, 'TASK-ROOT-1');
 			assert.strictEqual((await service.getTaskTree('TASK-ROOT-1'))?.nodes.length, 2);
 			assert.strictEqual((await service.getReviewGate('disp-review-wave-c'))?.dispatchId, 'disp-review-wave-c');

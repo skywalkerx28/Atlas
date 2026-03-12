@@ -363,11 +363,19 @@ export interface ISwarmState {
 	readonly swarmId: string;              // = rootTaskId (always)
 	readonly rootTaskId: string;           // task_hierarchy entry where parent_task_id IS NULL
 	readonly objectiveId: string | undefined;  // attached when root task was created via objective intake; undefined for ad-hoc
+	readonly objectiveStatus: IObjectiveState['status'] | undefined;
+	readonly objectiveProblemStatement: string | undefined;
+	readonly rootTaskStatus: ITaskState['status'];
 	readonly phase: SwarmPhase;
 	readonly taskIds: readonly string[];
 	readonly agentDispatchIds: readonly string[];
 	readonly worktreePaths: readonly string[];
 	readonly reviewDispatchIds: readonly string[];
+	readonly mergeDispatchIds: readonly string[];
+	readonly reviewNeeded: boolean;
+	readonly mergeBlocked: boolean;
+	readonly hasFailures: boolean;
+	readonly hasBlockedTasks: boolean;
 	readonly memoryRecordCount: number;
 	readonly costSpent: number;
 	readonly costCeiling: number | undefined;
@@ -1147,7 +1155,7 @@ export function mapWireAgent(wire: IWireAgentState): IAgentState {
 - `merge.list`, `merge.get`, `merge.subscribe`, `merge.unsubscribe`
 - `task.get`, `task.list`, `task.tree`
 
-Atlas validates `initialize.fabric_identity.repo_root` against the opened workspace and fails closed on mismatch. `task.list` is treated as root-task anchors only, and `task.tree` is the rooted lineage primitive that Phase 3 will later derive swarms from. Polling fallback remains intentionally narrow and read-only: it still only surfaces fleet and derived health from SQLite, because mirroring every daemon family locally would create a second privileged control plane.
+Atlas validates `initialize.fabric_identity.repo_root` against the opened workspace and fails closed on mismatch. `task.list` is treated as root-task anchors only, `task.tree` is the rooted lineage primitive, and Phase 3 now derives `IHarnessService.swarms` from that rooted state. Polling fallback remains intentionally narrow and read-only: it still only surfaces fleet and derived health from SQLite, because mirroring every daemon family locally would create a second privileged control plane.
 
 The daemon branch currently exposes a few additional read methods (`cost.get`, `agent.activity.get`, and `transcript.get`) that Atlas still leaves intentionally unimplemented in Wave C. Those remain explicit empty/default surfaces until the next bridge wave adopts them truthfully.
 
@@ -1321,7 +1329,7 @@ registerSingleton(IHarnessService, BrowserHarnessService, InstantiationType.Dela
 
 ### Objective
 
-Build the service layer that transforms raw harness state (flat lists of tasks, agents, worktrees, reviews) into swarm-first aggregates. This is where the conceptual shift from session-first to swarm-first becomes real in code.
+Build the pure derivation layer that transforms the bridge’s rooted task trees plus current objective/fleet/review/merge/health state into swarm-first aggregates. This is where the conceptual shift from session-first to swarm-first becomes real in code.
 
 ### Prerequisites
 
@@ -1330,17 +1338,16 @@ Phase 0b (model types), Phase 2 (IHarnessService providing raw observables).
 ### Deliverables
 
 ```
-src/vs/sessions/services/fleet/
-├── common/
-│   ├── fleetManagementService.ts    IFleetManagementService interface (from Phase 0b)
-│   └── swarmDerivation.ts           Pure functions: derive swarms from flat harness state
-├── browser/
-│   └── fleetManagementService.ts    Implementation
-└── test/
-    └── browser/
-        ├── fleetManagementService.test.ts
-        └── swarmDerivation.test.ts
+src/vs/sessions/services/harness/electron-browser/
+├── harnessSwarmDerivation.ts        Pure functions: derive swarms from rooted harness state
+└── harnessService.ts                Publishes derived swarms through IHarnessService
+
+src/vs/sessions/services/harness/test/node/
+├── harnessSwarmDerivation.test.ts
+└── harnessService.test.ts
 ```
+
+The separate `IFleetManagementService` runtime implementation remains a later selection/navigation phase. Phase 3’s shipped scope is model/service derivation only.
 
 ### Implementation Steps
 
@@ -1349,39 +1356,33 @@ src/vs/sessions/services/fleet/
 A swarm is not a table in the harness DB. It is a computed aggregate rooted at one **root task** — a `task_hierarchy` entry where `parent_task_id IS NULL`. Objectives are metadata attached when present. This is root-task-first, not objective-only, because the harness exposes root-task lineage directly through `task_hierarchy` and ad-hoc dispatches may not have objectives.
 
 ```typescript
-// common/swarmDerivation.ts
+// electron-browser/harnessSwarmDerivation.ts
 
 /**
- * Derive swarms from flat harness state.
+ * Derive swarms from rooted harness state.
  *
  * Algorithm (root-task-first):
- * 1. Find all root tasks: tasks where parentTaskId is undefined
- *    (task_hierarchy entries where parent_task_id IS NULL)
- * 2. For each root task, walk the task_hierarchy to collect all descendant task IDs
- * 3. Attach objective metadata: look up objectives where root_task_id matches
- *    (objective may be undefined for ad-hoc dispatches)
- * 4. For each task in the tree, find assigned agents (dispatch_queue entries)
- * 5. For each agent, find worktree paths (worker_registry)
- * 6. For each task, find review gate state (review_candidates)
- * 7. For each task, find merge entries (merge_queue)
- * 8. Count memory records scoped to this task tree
- * 9. Sum costs across all agents (daemon-derived field)
- * 10. Compute swarm phase from aggregate task/gate/merge state
- * 11. Compute attention level from worst-case child
+ * 1. Treat each task.tree root as one swarm anchor
+ * 2. Collect every descendant taskId from that rooted lineage
+ * 3. Attach objective metadata only when rootTaskId has one unique non-conflicting objective
+ * 4. Attach agents/reviews/merge entries whose taskId is inside that rooted lineage
+ * 5. Compute deterministic phase and attention summaries from task/review/merge/health state
+ * 6. Omit unsupported memory/activity/artifact semantics rather than inventing them
  */
 export function deriveSwarms(
+    taskTrees: readonly IHarnessTaskTree[],
     tasks: readonly ITaskState[],
-    agents: readonly IAgentState[],
+    objectives: readonly IObjectiveState[],
+    fleet: IFleetState,
     reviewGates: readonly IReviewGateState[],
     mergeEntries: readonly IMergeEntry[],
-    objectives: readonly IObjectiveState[],  // used for metadata attachment, not as root
+    health: IHealthState,
 ): ISwarmState[] {
-    // 1. Find root tasks (parentTaskId === undefined)
-    const rootTasks = tasks.filter(t => t.parentTaskId === undefined);
-
-    // 2. For each root task, build descendant tree
-    // 3. Attach objective metadata via objectives.find(o => o.rootTaskId === rootTask.taskId)
-    // 4-11. Aggregate agents, reviews, costs, compute phase and attention
+    // one swarm per task tree root
+    // objective metadata attaches by rootTaskId only
+    // membership comes only from rooted lineage
+    // review/merge/failed/blocked summaries stay explicit
+    // swarmId is always rootTaskId
 
     // Return sorted by attention level (highest first)
 }
@@ -1403,72 +1404,36 @@ The swarm phase is derived from the aggregate state of its children:
 | All merged | Completed |
 | Any task failed, no recovery in progress | Failed |
 
-#### 3.2 — FleetManagementService implementation
+#### 3.2 — HarnessService swarm publication
 
 ```typescript
-// browser/fleetManagementService.ts
+// electron-browser/harnessService.ts
 
-export class FleetManagementService extends Disposable implements IFleetManagementService {
-    private readonly _selectedEntity = observableValue<ISelectedEntity | undefined>(this, undefined);
-    readonly selectedEntity: IObservable<ISelectedEntity | undefined> = this._selectedEntity;
+private publishSwarmState(): void {
+    const taskTrees = this.rootedTaskIds
+        .map(rootTaskId => this.taskTrees.get(rootTaskId))
+        .filter((value): value is ITaskTreeResult => value !== undefined)
+        .map(taskTree => toBridgeTaskTree(taskTree));
 
-    private readonly _selectedEntityKind = observableValue<EntityKind | undefined>(this, undefined);
-    readonly selectedEntityKind: IObservable<EntityKind | undefined> = this._selectedEntityKind;
-
-    constructor(
-        @IHarnessService private readonly harnessService: IHarnessService,
-        @IContextKeyService private readonly contextKeyService: IContextKeyService,
-        @IEditorService private readonly editorService: IEditorService,
-    ) {
-        super();
-
-        // Bind selection to context keys for view visibility
-        this._register(autorun(reader => {
-            const entity = this._selectedEntity.read(reader);
-            this.contextKeyService.createKey('atlas.selectedEntityKind', entity?.kind);
-            this.contextKeyService.createKey('atlas.selectedEntityId', entity?.id);
-        }));
-    }
-
-    selectAgent(dispatchId: string): void {
-        this._selectedEntity.set({ kind: EntityKind.Agent, id: dispatchId }, undefined);
-    }
-
-    selectTask(taskId: string): void {
-        this._selectedEntity.set({ kind: EntityKind.Task, id: taskId }, undefined);
-    }
-
-    // ... other select methods
-
-    async openSwarmBoard(swarmId: string): Promise<void> {
-        this.selectSwarm(swarmId);
-        // Phase 7: open SwarmBoardEditorInput in the editor service
-    }
-
-    async openAgentView(dispatchId: string): Promise<void> {
-        this.selectAgent(dispatchId);
-        // Phase 7: open AgentViewEditorInput in the editor service
-    }
+    this.swarms.set(deriveSwarms(
+        taskTrees,
+        this.tasks.get(),
+        this.objectives.get(),
+        this.fleet.get(),
+        this.reviewGates.get(),
+        this.mergeQueue.get(),
+        this.health.get(),
+    ), undefined, undefined);
 }
 ```
 
 #### 3.3 — Derived swarm observable
 
-The fleet management service computes derived swarms reactively from root-task lineage:
+`HarnessService` computes derived swarms reactively from rooted task lineage:
 
 ```typescript
-// Inside FleetManagementService constructor
-this._register(autorun(reader => {
-    const tasks = this.harnessService.tasks.read(reader);
-    const fleet = this.harnessService.fleet.read(reader);
-    const reviewGates = this.harnessService.reviewGates.read(reader);
-    const mergeEntries = this.harnessService.mergeQueue.read(reader);
-    const objectives = this.harnessService.objectives.read(reader);
-
-    // Root-task-first: tasks drive swarm discovery, objectives attach as metadata
-    const swarms = deriveSwarms(tasks, fleet.agents, reviewGates, mergeEntries, objectives);
-    this._swarms.set(swarms, undefined);
-}));
+// publishReadState() / publish*State() call publishSwarmState()
+// so swarms stay in sync with task trees, objectives, fleet, review, merge, and health
 ```
 
 #### 3.4 — Context key integration
