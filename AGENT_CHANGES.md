@@ -79,7 +79,7 @@
   - `src/vs/server/node/webClientServer.ts(17,84)` `TS6133` `builtinExtensionsPath`
   - `src/vs/server/node/webClientServer.ts(29,10)` `TS6133` `IExtensionManifest`
 - Focused harness tests:
-  - `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run test-node -- --runGlob "vs/sessions/services/harness/test/node/*.test.js"`: passed (`24 passing`)
+- `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run test-node -- --runGlob "vs/sessions/services/harness/test/node/*.test.js"`: passed (`26 passing`)
   - In this isolated worktree, the stock node test runner needed a temporary local `out/` overlay backed by the main repo’s compiled `out/` plus a narrow TypeScript transpile of `src/vs/sessions/common/model/**` and `src/vs/sessions/services/harness/**` so the harness tests executed real JS instead of an empty glob
 
 ### Atlas vs daemon contract mismatches
