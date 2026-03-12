@@ -23,24 +23,32 @@ export * from './health.js';
 // service contracts can depend on the canonical model without introducing a runtime edge.
 declare global {
 	namespace AtlasModel {
+		type AttentionLevel = import('./attention.js').AttentionLevel;
 		type EntityKind = import('./selection.js').EntityKind;
+		type NavigationSection = import('./selection.js').NavigationSection;
 		type ISelectedEntity = import('./selection.js').ISelectedEntity;
+		type INavigationSelection = import('./selection.js').INavigationSelection;
 
+		type AgentStatus = import('./agent.js').AgentStatus;
 		type IAgentState = import('./agent.js').IAgentState;
 		type IFleetState = import('./agent.js').IFleetState;
 
 		type ICostState = import('./cost.js').ICostState;
+		type PoolMode = import('./health.js').PoolMode;
 		type IHealthState = import('./health.js').IHealthState;
 
 		type IObjectiveState = import('./objective.js').IObjectiveState;
 		type IObjectiveSubmitOptions = import('./objective.js').IObjectiveSubmitOptions;
 
+		type SwarmPhase = import('./swarm.js').SwarmPhase;
 		type ISwarmState = import('./swarm.js').ISwarmState;
+		type TaskStatus = import('./task.js').TaskStatus;
 		type ITaskState = import('./task.js').ITaskState;
 		type ITranscriptEntry = import('./run.js').ITranscriptEntry;
 		type IWorktreeState = import('./worktree.js').IWorktreeState;
 
 		type IAdvisoryReviewEntry = import('./review.js').IAdvisoryReviewEntry;
+		type MergeExecutionStatus = import('./review.js').MergeExecutionStatus;
 		type IReviewGateState = import('./review.js').IReviewGateState;
 		type IMergeEntry = import('./review.js').IMergeEntry;
 

@@ -1,5 +1,68 @@
 # Agent Changes
 
+## Phase 4
+
+### What landed
+
+- Replaced the old sessions-history sidebar pane with a sessions-only Atlas navigation pane that is swarm-first and read-only.
+- The shipped left rail now exposes four first-class sections:
+  - `Tasks`
+  - `Agents`
+  - `Reviews`
+  - `Fleet`
+- Added a real runtime `IFleetManagementService` implementation at `src/vs/sessions/services/fleet/browser/fleetManagementService.ts`.
+- `IFleetManagementService` now owns:
+  - `selection`
+  - `selectedSection`
+  - `selectedEntity`
+  - `selectedEntityKind`
+  - deterministic `select*` and `open*` navigation methods
+- `FleetManagementService` now connects `IHarnessService` to the primary workspace root inside the sessions shell and keeps that connection scoped to the sessions window.
+- Added a read-only Atlas center shell in the ChatBar so left-rail selection changes have a truthful destination even before later board/editor phases land.
+- Phase 4 stayed read-only:
+  - no write controls
+  - no review/merge action buttons
+  - no standard workbench leakage
+
+### Selection and navigation model shipped
+
+- Sidebar identity stays swarm-first:
+  - `Tasks` renders one row per derived swarm
+  - swarm identity is still `rootTaskId`
+  - objective metadata decorates swarm rows but does not replace identity
+- Selection is represented explicitly as `INavigationSelection`:
+  - `section`
+  - `entity | undefined`
+- Section routing is deterministic:
+  - swarm/task/objective selections route to `Tasks`
+  - agent selections route to `Agents`
+  - review selections route to `Reviews`
+  - `Fleet` is a section-level selection without a required entity
+- The left rail and center shell both read from current harness state; no fake detail panes were added when data was not available yet.
+
+### Tests added
+
+- `src/vs/sessions/contrib/atlasNavigation/test/node/atlasNavigationModel.test.ts`
+- `src/vs/sessions/services/fleet/test/node/fleetManagementService.test.ts`
+
+### Verification
+
+- `git diff --check`: passed
+- `node build/checker/layersChecker.ts`: passed
+- `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run compile-check-ts-native`: failed only on pre-existing unrelated noise in `src/vs/server/node/webClientServer.ts`
+  - `src/vs/server/node/webClientServer.ts(17,84)` `TS6133` `builtinExtensionsPath`
+  - `src/vs/server/node/webClientServer.ts(29,10)` `TS6133` `IExtensionManifest`
+- `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run test-node -- --runGlob "vs/sessions/**/test/node/*.test.js"`: passed (`32 passing`)
+  - In this isolated worktree, the stock node test runner needed a temporary local `out/` emit of the repo before the sessions node tests could execute the Phase 4 JS from this branch.
+
+### Intentionally unimplemented
+
+- Dedicated swarm boards, agent views, review editors, and fleet grid detail surfaces
+- Right inspector redesign
+- Titlebar redesign
+- All write/control plane interactions
+- Any UI that depends on memory, transcript/activity, result packet, or worktree-inspection reads that Atlas still does not surface truthfully
+
 ## Phase 3
 
 ### What landed

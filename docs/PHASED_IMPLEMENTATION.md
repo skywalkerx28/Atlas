@@ -767,7 +767,11 @@ export interface IFleetManagementService {
 	readonly _serviceBrand: undefined;
 
 	// --- Selection ---
+	readonly selection: IObservable<INavigationSelection>;
+	readonly selectedSection: IObservable<NavigationSection>;
 	readonly selectedEntity: IObservable<ISelectedEntity | undefined>;
+	selectSection(section: NavigationSection): void;
+	selectEntity(entity: ISelectedEntity | undefined): void;
 	selectAgent(dispatchId: string): void;
 	selectTask(taskId: string): void;
 	selectObjective(objectiveId: string): void;
@@ -1472,7 +1476,7 @@ import 'vs/sessions/services/fleet/browser/fleetManagementService.js';
 
 ### Objective
 
-Replace the single "Sessions" sidebar view with swarm-first navigation. The sidebar becomes the operator's primary navigation tool with views for Swarms, Tasks, Agents, and Reviews.
+Replace the single "Sessions" sidebar view with swarm-first navigation. The shipped Wave 1 implementation keeps the sidebar as one Atlas view pane with first-class sections for `Tasks`, `Agents`, `Reviews`, and `Fleet`, then routes the current selection into a read-only center shell in the ChatBar.
 
 ### Prerequisites
 
@@ -1482,129 +1486,108 @@ Phase 3 (fleet state and derived swarms).
 
 ```
 src/vs/sessions/contrib/
-├── swarmsView/browser/
-│   ├── swarmsView.contribution.ts     View container + view registration
-│   ├── swarmsViewPane.ts              ViewPane with tree
-│   └── swarmsTreeDataProvider.ts      Tree data: swarms grouped by objective/phase/attention
-├── tasksView/browser/
-│   ├── tasksView.contribution.ts
-│   ├── tasksViewPane.ts
-│   └── tasksTreeDataProvider.ts       Tree data: tasks grouped by status/swarm
-├── agentsView/browser/
-│   ├── agentsView.contribution.ts
-│   ├── agentsViewPane.ts
-│   └── agentsTreeDataProvider.ts      Tree data: agents grouped by role/status
-├── reviewsView/browser/
-│   ├── reviewsView.contribution.ts
-│   ├── reviewsViewPane.ts
-│   └── reviewsTreeDataProvider.ts     Tree data: reviews grouped by phase
+├── atlasNavigation/browser/
+│   ├── atlasNavigationModel.ts        Pure section and center-shell view models
+│   ├── atlasNavigationViewPane.ts     Unified sidebar left rail with Tasks/Agents/Reviews/Fleet sections
+│   ├── atlasCenterShellViewPane.ts    Read-only center shell routed from current selection
+│   └── atlasCenterShell.contribution.ts
+src/vs/sessions/services/fleet/browser/
+└── fleetManagementService.ts          Sessions-scoped navigation + selection runtime
 ```
 
 ### Implementation Steps
 
-#### 4.1 — View container registration
+#### 4.1 — Unified Atlas navigation pane
 
-Each view follows the existing sessions contribution pattern. Register view containers in the sidebar with `WindowVisibility.Sessions`:
+Reuse the existing sessions sidebar container instead of registering multiple new sidebar containers. Replace the old sessions-history view with a single `AtlasNavigationViewPane` that renders explicit section buttons for `Tasks`, `Agents`, `Reviews`, and `Fleet`.
 
 ```typescript
-// swarmsView/browser/swarmsView.contribution.ts
+// sessions/contrib/sessions/browser/sessions.contribution.ts
 
-const SWARMS_VIEW_CONTAINER_ID = 'atlas.workbench.view.swarmsContainer';
+const agentSessionsViewContainer = Registry.as<IViewContainersRegistry>(ViewContainerExtensions.ViewContainersRegistry).registerViewContainer({
+	id: SessionsContainerId,
+	title: localize2('atlasNavigation.view.label', "Atlas"),
+	icon: atlasNavigationIcon,
+	ctorDescriptor: new SyncDescriptor(ViewPaneContainer, [SessionsContainerId, { mergeViewWithContainerWhenSingleView: true }]),
+	windowVisibility: WindowVisibility.Sessions
+}, ViewContainerLocation.Sidebar, { isDefault: true });
 
-Registry.as<IViewContainersRegistry>(ViewExtensions.ViewContainersModel)
-    .registerViewContainer({
-        id: SWARMS_VIEW_CONTAINER_ID,
-        title: nls.localize2('swarmsView', "Swarms"),
-        ctorDescriptor: new SyncDescriptor(ViewPaneContainer),
-        icon: swarmsViewIcon,
-        order: 1,
-        windowVisibility: WindowVisibility.Sessions,
-    }, ViewContainerLocation.Sidebar, { isDefault: true });
-
-Registry.as<IViewsRegistry>(ViewExtensions.ViewsModel)
-    .registerViews([{
-        id: 'atlas.swarmsView',
-        name: nls.localize2('swarms', "Swarms"),
-        ctorDescriptor: new SyncDescriptor(SwarmsViewPane),
-        containerID: SWARMS_VIEW_CONTAINER_ID,
-        canToggleVisibility: false,
-    }], SWARMS_VIEW_CONTAINER_ID);
+Registry.as<IViewsRegistry>(ViewContainerExtensions.ViewsRegistry).registerViews([{
+	id: AtlasNavigationViewId,
+	name: localize2('atlasNavigation.view.label', "Atlas"),
+	ctorDescriptor: new SyncDescriptor(AtlasNavigationViewPane),
+	canToggleVisibility: false,
+	canMoveView: false,
+	windowVisibility: WindowVisibility.Sessions,
+}], agentSessionsViewContainer);
 ```
 
-Similarly for Tasks (order: 2), Agents (order: 3), Reviews (order: 4).
+#### 4.2 — Section view models and selection runtime
 
-#### 4.2 — Tree data providers
-
-Each view uses `WorkbenchCompressibleObjectTree` — the same pattern used by `AgenticSessionsViewPane` for the session list.
+`IFleetManagementService` becomes the sessions-scoped selection owner. It holds the current `INavigationSelection`, tracks the selected top-level section, connects `IHarnessService` to the primary workspace root, and reveals the ChatBar center shell when the user chooses a swarm, agent, or review target.
 
 ```typescript
-// swarmsTreeDataProvider.ts
+// sessions/services/fleet/browser/fleetManagementService.ts
 
-export class SwarmsTreeDataProvider extends Disposable {
-    constructor(
-        @IFleetManagementService private readonly fleetService: IFleetManagementService,
-        @IHarnessService private readonly harnessService: IHarnessService,
-    ) {
-        super();
-    }
+export class FleetManagementService extends Disposable implements IFleetManagementService {
+	readonly selection = observableValue<INavigationSelection>(this, {
+		section: NavigationSection.Tasks,
+		entity: undefined,
+	});
 
-    getElements(): ISwarmTreeElement[] {
-        const swarms = this.fleetService.swarms;
-        // Group by: objective (default), phase, or attention level
-        // Each swarm node shows: name, phase badge, agent count, cost, attention indicator
-        // Child nodes: tasks (summary view)
-    }
+	selectSection(section: NavigationSection): void { ... }
+	selectSwarm(swarmId: string): void { ... }
+	selectAgent(dispatchId: string): void { ... }
+	selectReview(dispatchId: string): void { ... }
+	openFleetGrid(): Promise<void> { ... }
 }
 ```
 
-Tree element types:
+The pure `atlasNavigationModel.ts` helpers derive the left-rail lists and the read-only center-shell summaries from current bridge state. In this shipped phase:
 
-| View | Root Elements | Child Elements | Inline Stats |
+| Section | Source of truth | Primary list semantics | Secondary detail |
 |---|---|---|---|
-| Swarms | Objective groups → Swarm entries | Task summary nodes | Phase badge, agent count, cost |
-| Tasks | Status groups (Executing/Queued/Reviewing/Done) | Individual tasks | Priority, assigned agent, cost |
-| Agents | Role groups (Planner/Worker/Judge) or status groups | Individual agents | Status dot, task, cost, time |
-| Reviews | Phase groups (Pre/In-flight/Post) | Individual reviews | Verdict badge, age |
+| Tasks | `HarnessService.swarms` + `tasks` | One entry per rooted swarm | Objective metadata is decoration only |
+| Agents | `HarnessService.fleet` | One entry per visible dispatch | Linked back to owning swarm/task when possible |
+| Reviews | `HarnessService.reviewGates` + `mergeQueue` | Authoritative gate + merge entries only | No advisory queue conflation |
+| Fleet | `connectionState` + `fleet` + `health` | Read-only summary cards and top attention items | No write controls |
 
-#### 4.3 — Badge system
+#### 4.3 — Center shell routing
 
-View containers display badge counts on the sidebar tab even when not active:
+The center surface is currently a read-only shell view in the ChatBar. It reacts to the current `INavigationSelection` and renders truthful summary/detail lists even when the downstream dedicated boards are not built yet.
 
 ```typescript
-// In each contribution file, register badge provider
-this._register(this.harnessService.reviews.map(reviews => {
-    const pending = reviews.filter(r => r.verdict === ReviewVerdict.Pending).length;
-    viewContainer.badge = pending > 0 ? { count: pending, tooltip: `${pending} reviews pending` } : undefined;
-}));
-```
+// sessions/contrib/atlasNavigation/browser/atlasCenterShell.contribution.ts
 
-Key badges:
-- **Reviews**: count of pending reviews (most important — drives operator throughput)
-- **Agents**: count of blocked/failed agents (needs attention)
-- **Tasks**: count of executing tasks (activity indicator)
-- **Swarms**: count of active swarms
+registerViews([{
+	id: ATLAS_CENTER_SHELL_VIEW_ID,
+	name: localize2('atlasCenterShell', "Atlas"),
+	ctorDescriptor: new SyncDescriptor(AtlasCenterShellViewPane),
+	windowVisibility: WindowVisibility.Sessions,
+}], atlasCenterShellContainer);
+```
 
 #### 4.4 — Sidebar part update
 
-Modify `sessions/browser/parts/sidebarPart.ts` to register the new view containers. The existing `AgenticSessionsViewPane` remains available but is no longer the default — Swarms becomes the default sidebar view.
+No standard workbench changes are required. The sessions shell continues to use the existing sessions sidebar and ChatBar parts; Phase 4 only swaps the sidebar pane implementation and registers the sessions-only center shell.
 
 #### 4.5 — Import registration
 
 ```typescript
-// sessions.common.main.ts — add imports
-import 'vs/sessions/contrib/swarmsView/browser/swarmsView.contribution.js';
-import 'vs/sessions/contrib/tasksView/browser/tasksView.contribution.js';
-import 'vs/sessions/contrib/agentsView/browser/agentsView.contribution.js';
-import 'vs/sessions/contrib/reviewsView/browser/reviewsView.contribution.js';
+// sessions.common.main.ts
+import 'vs/sessions/services/fleet/browser/fleetManagementService.js';
+
+// sessions.desktop.main.ts and sessions.web.main.ts
+import 'vs/sessions/contrib/atlasNavigation/browser/atlasCenterShell.contribution.js';
 ```
 
 ### Validation
 
-- View containers appear in sidebar with correct icons and ordering
-- Trees populate from harness data via IFleetManagementService
-- Clicking a tree item updates `IFleetManagementService.selectedEntity`
-- Badge counts update reactively as harness state changes
-- Views only appear in sessions window (not standard workbench) via `WindowVisibility.Sessions`
+- The sessions sidebar now renders a single Atlas left rail with `Tasks`, `Agents`, `Reviews`, and `Fleet`
+- Lists populate from current harness state via `IHarnessService` and Phase 3 derived swarms
+- Clicking a left-rail item updates `IFleetManagementService.selection`
+- The ChatBar center shell updates to the selected section/entity without fabricating later-phase detail panes
+- All new surfaces remain sessions-only via `WindowVisibility.Sessions`
 
 ---
 

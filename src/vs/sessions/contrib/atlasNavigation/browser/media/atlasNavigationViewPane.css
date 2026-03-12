@@ -1,0 +1,227 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+.atlas-navigation-view-pane {
+	height: 100%;
+}
+
+.atlas-navigation-root {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	height: 100%;
+	padding: 14px 12px 16px;
+	background: linear-gradient(180deg, color-mix(in srgb, var(--vscode-sideBar-background) 92%, transparent), var(--vscode-sideBar-background));
+}
+
+.atlas-navigation-header {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding-bottom: 8px;
+	border-bottom: 1px solid color-mix(in srgb, var(--vscode-sideBarTitle-border, transparent) 55%, transparent);
+}
+
+.atlas-navigation-header-title {
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: color-mix(in srgb, var(--vscode-sideBarTitle-foreground) 78%, transparent);
+}
+
+.atlas-navigation-header-status {
+	font-size: 12px;
+	color: color-mix(in srgb, var(--vscode-foreground) 70%, transparent);
+}
+
+.atlas-navigation-sections {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 8px;
+}
+
+.atlas-navigation-section-button {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 10px 12px;
+	border: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 75%, transparent);
+	border-radius: 10px;
+	background: color-mix(in srgb, var(--vscode-sideBar-background) 88%, var(--vscode-sideBarTitle-background, transparent));
+	color: inherit;
+	cursor: pointer;
+	text-align: left;
+}
+
+.atlas-navigation-section-button:hover {
+	border-color: color-mix(in srgb, var(--vscode-focusBorder) 60%, transparent);
+}
+
+.atlas-navigation-section-button.selected {
+	border-color: var(--vscode-focusBorder);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder) 35%, transparent);
+}
+
+.atlas-navigation-section-label {
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.atlas-navigation-section-count {
+	min-width: 22px;
+	padding: 2px 6px;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--vscode-badge-background) 80%, transparent);
+	color: var(--vscode-badge-foreground);
+	font-size: 11px;
+	text-align: center;
+}
+
+.atlas-navigation-content {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-height: 0;
+	flex: 1;
+}
+
+.atlas-navigation-heading {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.atlas-navigation-heading-title {
+	font-size: 13px;
+	font-weight: 700;
+}
+
+.atlas-navigation-heading-subtitle {
+	font-size: 12px;
+	color: color-mix(in srgb, var(--vscode-foreground) 65%, transparent);
+}
+
+.atlas-navigation-subheading {
+	margin-top: 4px;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: color-mix(in srgb, var(--vscode-foreground) 60%, transparent);
+}
+
+.atlas-navigation-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-height: 0;
+	overflow-y: auto;
+}
+
+.atlas-navigation-item {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding: 10px 12px;
+	border: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 70%, transparent);
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--vscode-sideBar-background) 94%, transparent);
+	color: inherit;
+	cursor: pointer;
+	text-align: left;
+}
+
+.atlas-navigation-item:hover {
+	border-color: color-mix(in srgb, var(--vscode-focusBorder) 52%, transparent);
+}
+
+.atlas-navigation-item.selected {
+	border-color: var(--vscode-focusBorder);
+	background: color-mix(in srgb, var(--vscode-sideBar-background) 80%, var(--vscode-sideBarTitle-background, transparent));
+}
+
+.atlas-navigation-item-title-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.atlas-navigation-item-title {
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.atlas-navigation-item-subtitle,
+.atlas-navigation-item-meta,
+.atlas-navigation-item-flag {
+	font-size: 11px;
+	color: color-mix(in srgb, var(--vscode-foreground) 72%, transparent);
+}
+
+.atlas-navigation-item-flag {
+	color: var(--vscode-textLink-foreground);
+}
+
+.atlas-navigation-kind-badge {
+	margin-left: auto;
+	padding: 2px 6px;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--vscode-editorInfo-foreground) 14%, transparent);
+	font-size: 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+}
+
+.atlas-navigation-fleet-cards {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 8px;
+}
+
+.atlas-navigation-fleet-card {
+	padding: 10px 12px;
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--vscode-sideBar-background) 90%, var(--vscode-sideBarTitle-background, transparent));
+	border: 1px solid color-mix(in srgb, var(--vscode-sideBar-border, transparent) 70%, transparent);
+}
+
+.atlas-navigation-fleet-card-label {
+	font-size: 11px;
+	color: color-mix(in srgb, var(--vscode-foreground) 65%, transparent);
+}
+
+.atlas-navigation-fleet-card-value {
+	margin-top: 6px;
+	font-size: 18px;
+	font-weight: 700;
+}
+
+.atlas-navigation-empty {
+	padding: 14px 12px;
+	border-radius: 12px;
+	background: color-mix(in srgb, var(--vscode-sideBar-background) 90%, transparent);
+	color: color-mix(in srgb, var(--vscode-foreground) 70%, transparent);
+	font-size: 12px;
+}
+
+.atlas-navigation-item.attention-critical,
+.atlas-navigation-section-button.attention-critical,
+.atlas-navigation-fleet-card.attention-critical {
+	border-color: color-mix(in srgb, var(--vscode-editorError-foreground) 65%, transparent);
+}
+
+.atlas-navigation-item.attention-needs-action,
+.atlas-navigation-section-button.attention-needs-action,
+.atlas-navigation-fleet-card.attention-needs-action {
+	border-color: color-mix(in srgb, var(--vscode-editorWarning-foreground) 65%, transparent);
+}
+
+.atlas-navigation-item.attention-active,
+.atlas-navigation-section-button.attention-active,
+.atlas-navigation-fleet-card.attention-active {
+	border-color: color-mix(in srgb, var(--vscode-editorInfo-foreground) 55%, transparent);
+}

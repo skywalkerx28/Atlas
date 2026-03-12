@@ -11,9 +11,12 @@ export const IFleetManagementService = createDecorator<IFleetManagementService>(
 export interface IFleetManagementService {
 	readonly _serviceBrand: undefined;
 
+	readonly selection: IObservable<AtlasModel.INavigationSelection>;
+	readonly selectedSection: IObservable<AtlasModel.NavigationSection>;
 	readonly selectedEntity: IObservable<AtlasModel.ISelectedEntity | undefined>;
 	readonly selectedEntityKind: IObservable<AtlasModel.EntityKind | undefined>;
 
+	selectSection(section: AtlasModel.NavigationSection): void;
 	selectEntity(entity: AtlasModel.ISelectedEntity | undefined): void;
 	selectAgent(dispatchId: string): void;
 	selectTask(taskId: string): void;

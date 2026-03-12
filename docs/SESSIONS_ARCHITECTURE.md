@@ -87,7 +87,7 @@ The current sessions layer is organized around **one active session** at a time.
 | Current | Atlas |
 |---------|-------|
 | One active session | One project harness fabric with many concurrent swarms |
-| Session list in sidebar | Objectives/Swarms/Tasks/Agents/Reviews/Fleet in sidebar |
+| Session list in sidebar | Unified Atlas left rail with `Tasks` / `Agents` / `Reviews` / `Fleet`, backed by swarms |
 | Chat as primary interaction | Swarm board as the primary execution surface |
 | File changes for one session | File changes scoped to any swarm or agent |
 | Session picker in titlebar | Project/objective/swarm selector + fleet status |
@@ -110,7 +110,7 @@ A swarm is not a brand-new backend object that replaces the harness. It is the U
 
 ### Shell Transformation
 
-**Current sidebar** (sessions list) → **Atlas left rail** (Objectives, Swarms, Tasks, Agents, Reviews, Fleet, etc.)
+**Current sidebar** (sessions list) → **Atlas left rail** (`Tasks`, `Agents`, `Reviews`, `Fleet`, with swarms/objectives decorating `Tasks`)
 **Current chat bar** (single agent chat) → **Atlas center stage** (objective board, swarm board, agent view, fleet grid, diff view, etc.)
 **Current auxiliary bar** (changes view) → **Atlas right inspector** (context for selected entity)
 **Current panel** (hidden) → **Atlas bottom ops strip** (terminals, logs, health)
@@ -186,38 +186,20 @@ The important product constraint is that `IHarnessService` represents **one proj
 
 ### Phase 2: Left Rail Navigation
 
-**Replace** the single sessions container in the sidebar with multiple view containers:
+**Replace** the single sessions-history view in the sidebar with one unified Atlas navigation pane, then add a read-only center shell in the ChatBar:
 
 ```
 sessions/contrib/
-├── swarmsView/browser/            Swarm boards and grouped execution lanes
-│   ├── swarmsView.contribution.ts
-│   └── swarmsViewPane.ts
-├── tasksView/browser/             Tasks pipeline (queued/executing/reviewing/done)
-│   ├── tasksView.contribution.ts
-│   └── tasksViewPane.ts
-├── agentsView/browser/            Fleet agent list with live status
-│   ├── agentsView.contribution.ts
-│   └── agentsViewPane.ts
-├── reviewsView/browser/           Pending review queue with batch actions
-│   ├── reviewsView.contribution.ts
-│   └── reviewsViewPane.ts
-├── artifactsView/browser/         Artifact browser
-│   ├── artifactsView.contribution.ts
-│   └── artifactsViewPane.ts
-├── fleetView/browser/             Fleet overview (capacity, health, cost)
-│   ├── fleetView.contribution.ts
-│   └── fleetViewPane.ts
-├── objectivesView/browser/        Objectives list
-│   ├── objectivesView.contribution.ts
-│   └── objectivesViewPane.ts
-├── mergesView/browser/            Merge queue
-│   ├── mergesView.contribution.ts
-│   └── mergesViewPane.ts
-└── deploymentsView/browser/       Deployment pipelines
-    ├── deploymentsView.contribution.ts
-    └── deploymentsViewPane.ts
+├── atlasNavigation/browser/
+│   ├── atlasNavigationModel.ts
+│   ├── atlasNavigationViewPane.ts
+│   ├── atlasCenterShellViewPane.ts
+│   └── atlasCenterShell.contribution.ts
+sessions/services/fleet/browser/
+└── fleetManagementService.ts
 ```
+
+This shipped Phase 4 wave is intentionally narrower than the broader long-term vision. It exposes first-class `Tasks`, `Agents`, `Reviews`, and `Fleet` sections inside one Atlas pane instead of registering a large matrix of separate sidebar containers up front.
 
 **Keep existing**: `sessions/` (rename to session management internals), `changes/` (extend for agent-scoped diffs), `git/`, `github/`, `codeReview/`, `terminal/`, `files/`, `fileTreeView/`
 
@@ -326,13 +308,23 @@ interface ISelectedEntity {
 
 // Session management becomes fleet management
 interface IFleetManagementService {
+    readonly selection: IObservable<INavigationSelection>;
+    readonly selectedSection: IObservable<NavigationSection>;
     readonly selectedEntity: IObservable<ISelectedEntity | undefined>;
-    readonly fleet: IObservable<IFleetState>;
 
+    selectSection(section: NavigationSection): void;
+    selectEntity(entity: ISelectedEntity | undefined): void;
     selectAgent(dispatchId: string): void;
     selectTask(taskId: string): void;
     selectObjective(objectiveId: string): void;
+    selectSwarm(swarmId: string): void;
     selectReview(dispatchId: string): void;
+
+    openSwarmBoard(swarmId: string): Promise<void>;
+    openObjectiveBoard(objectiveId: string): Promise<void>;
+    openAgentView(dispatchId: string): Promise<void>;
+    openFleetGrid(): Promise<void>;
+    openReview(dispatchId: string): Promise<void>;
 }
 ```
 

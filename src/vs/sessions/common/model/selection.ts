@@ -13,7 +13,19 @@ export const enum EntityKind {
 	Artifact = 'artifact',
 }
 
+export const enum NavigationSection {
+	Tasks = 'tasks',
+	Agents = 'agents',
+	Reviews = 'reviews',
+	Fleet = 'fleet',
+}
+
 export interface ISelectedEntity {
 	readonly kind: EntityKind;
 	readonly id: string;
+}
+
+export interface INavigationSelection {
+	readonly section: NavigationSection;
+	readonly entity: ISelectedEntity | undefined;
 }

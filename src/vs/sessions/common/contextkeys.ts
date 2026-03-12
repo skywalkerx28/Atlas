@@ -5,6 +5,7 @@
 
 import { localize } from '../../nls.js';
 import { RawContextKey } from '../../platform/contextkey/common/contextkey.js';
+import { NavigationSection } from './model/selection.js';
 
 //#region < --- Chat Bar --- >
 
@@ -17,5 +18,12 @@ export const ChatBarVisibleContext = new RawContextKey<boolean>('chatBarVisible'
 //#region < --- Welcome --- >
 
 export const SessionsWelcomeVisibleContext = new RawContextKey<boolean>('sessionsWelcomeVisible', false, localize('sessionsWelcomeVisible', "Whether the sessions welcome overlay is visible"));
+
+//#endregion
+
+//#region < --- Atlas Navigation --- >
+
+export const AtlasSelectedEntityKindContext = new RawContextKey<string>('atlas.selectedEntityKind', '', localize('atlasSelectedEntityKind', "The selected Atlas entity kind in the sessions window"));
+export const AtlasSelectedSectionContext = new RawContextKey<string>('atlas.selectedSection', NavigationSection.Tasks, localize('atlasSelectedSection', "The selected Atlas navigation section in the sessions window"));
 
 //#endregion
