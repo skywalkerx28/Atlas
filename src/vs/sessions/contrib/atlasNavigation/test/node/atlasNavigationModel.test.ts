@@ -19,6 +19,7 @@ import { ReviewDecision, WireDispatchPriority, WireIntegrationState, WirePromoti
 import { HarnessConnectionState, type IHarnessConnectionInfo } from '../../../../services/harness/common/harnessService.js';
 import {
 	buildAtlasShellModel,
+	buildFleetCommandModel,
 	buildReviewNavigationItems,
 	buildSectionDescriptors,
 	buildTaskNavigationItems,
@@ -220,6 +221,186 @@ suite('AtlasNavigationModel', () => {
 		assert.strictEqual(mergeModel.subtitle, `Merge lane for dispatch ${dispatchId}`);
 		assert.deepStrictEqual(gateModel.items.map(item => item.id), ['gate:disp-shared-1', 'merge:disp-shared-1']);
 		assert.deepStrictEqual(mergeModel.items.map(item => item.id), ['gate:disp-shared-1', 'merge:disp-shared-1']);
+	});
+
+	test('builds the phase 5 fleet command surface from live fleet, health, and review pressure', () => {
+		const now = 1_000_000;
+		const runningDispatchId = 'disp-running-1';
+		const state = createAtlasStateSnapshot({
+			connection: createConnectionState(),
+			swarms: [
+				createSwarmState({
+					swarmId: 'TASK-ROOT-1',
+					rootTaskId: 'TASK-ROOT-1',
+					taskIds: Object.freeze(['TASK-ROOT-1']),
+					attentionLevel: AttentionLevel.Critical,
+				}),
+				createSwarmState({
+					swarmId: 'TASK-ROOT-2',
+					rootTaskId: 'TASK-ROOT-2',
+					taskIds: Object.freeze(['TASK-ROOT-2']),
+					attentionLevel: AttentionLevel.NeedsAction,
+				}),
+				createSwarmState({
+					swarmId: 'TASK-ROOT-3',
+					rootTaskId: 'TASK-ROOT-3',
+					taskIds: Object.freeze(['TASK-ROOT-3']),
+					attentionLevel: AttentionLevel.Idle,
+				}),
+				createSwarmState({
+					swarmId: 'TASK-ROOT-4',
+					rootTaskId: 'TASK-ROOT-4',
+					taskIds: Object.freeze(['TASK-ROOT-4']),
+					attentionLevel: AttentionLevel.Completed,
+				}),
+			],
+			fleet: createFleetState([
+				createAgentState({
+					dispatchId: runningDispatchId,
+					taskId: 'TASK-ROOT-1',
+					roleId: 'planner',
+					status: AgentStatus.Running,
+					attentionLevel: AttentionLevel.Active,
+					lastHeartbeat: now - 5_000,
+					timeInState: 125_000,
+					lastActivity: 'Coordinating implementation',
+				}),
+				createAgentState({
+					dispatchId: 'disp-blocked-1',
+					taskId: 'TASK-ROOT-2',
+					roleId: 'worker',
+					status: AgentStatus.Blocked,
+					attentionLevel: AttentionLevel.NeedsAction,
+					lastHeartbeat: now - 30_000,
+					timeInState: 900_000,
+					lastActivity: 'Waiting on human input',
+				}),
+				createAgentState({
+					dispatchId: 'disp-failed-1',
+					taskId: 'TASK-ROOT-3',
+					roleId: 'judge',
+					status: AgentStatus.Failed,
+					attentionLevel: AttentionLevel.Critical,
+					lastHeartbeat: now - 90_000,
+					timeInState: 2_400_000,
+					lastActivity: 'Failed validation pass',
+				}),
+				createAgentState({
+					dispatchId: 'disp-idle-1',
+					taskId: 'TASK-ROOT-4',
+					roleId: 'worker',
+					status: AgentStatus.Idle,
+					attentionLevel: AttentionLevel.Idle,
+					lastHeartbeat: now - 240_000,
+					timeInState: 3_600_000,
+					lastActivity: 'Waiting for more work',
+				}),
+			]),
+			health: createHealthState({
+				mode: PoolMode.DiskPressure,
+				queueDepth: 3,
+				attentionLevel: AttentionLevel.NeedsAction,
+			}),
+			reviewGates: [
+				createReviewGateState({
+					dispatchId: runningDispatchId,
+					taskId: 'TASK-ROOT-1',
+					roleId: 'judge',
+					reviewState: WireReviewState.AwaitingReview,
+					attentionLevel: AttentionLevel.NeedsAction,
+				}),
+			],
+			mergeQueue: [
+				createMergeEntry({
+					dispatchId: runningDispatchId,
+					taskId: 'TASK-ROOT-1',
+					status: MergeExecutionStatus.Pending,
+					attentionLevel: AttentionLevel.Active,
+				}),
+			],
+		});
+
+		const model = buildFleetCommandModel(state, now);
+		const stats = Object.fromEntries(model.stats.map(item => [item.label, item.value]));
+		const groups = Object.fromEntries(model.groups.map(group => [group.id, group]));
+
+		assert.strictEqual(model.title, 'Fleet Command');
+		assert.deepStrictEqual(stats, {
+			'Connection': 'Daemon',
+			'Health': 'Disk Pressure',
+			'Queue depth': '3',
+			'Running': '1',
+			'Blocked': '1',
+			'Failed': '1',
+			'Critical swarms': '1',
+			'Needs action swarms': '1',
+			'Review pressure': '1',
+		});
+		assert.strictEqual(groups['attention'].count, 1);
+		assert.strictEqual(groups['running'].count, 1);
+		assert.strictEqual(groups['blocked'].count, 1);
+		assert.strictEqual(groups['failed'].count, 1);
+		assert.strictEqual(groups['idle'].count, 1);
+
+		const pressureItem = groups['attention'].items[0];
+		assert.strictEqual(pressureItem.dispatchId, runningDispatchId);
+		assert.strictEqual(pressureItem.heartbeatLabel, '5s ago');
+		assert.strictEqual(pressureItem.timeInStateLabel, '2m');
+		assert.strictEqual(pressureItem.lastActivityLabel, 'Coordinating implementation');
+		assert.strictEqual(pressureItem.pressureSummary, 'Gate Awaiting Review • Merge Pending');
+		assert.deepStrictEqual(pressureItem.pivots.map(pivot => ({ id: pivot.id, kind: pivot.target.kind })), [
+			{ id: `agent:${runningDispatchId}`, kind: EntityKind.Agent },
+			{ id: 'swarm:TASK-ROOT-1', kind: EntityKind.Swarm },
+			{ id: `gate:${runningDispatchId}`, kind: EntityKind.Review },
+			{ id: `merge:${runningDispatchId}`, kind: EntityKind.Review },
+		]);
+	});
+
+	test('keeps fleet review pressure scoped to the live dispatch rather than the whole task tree', () => {
+		const now = 500_000;
+		const state = createAtlasStateSnapshot({
+			swarms: [
+				createSwarmState({
+					swarmId: 'TASK-ROOT-1',
+					rootTaskId: 'TASK-ROOT-1',
+					taskIds: Object.freeze(['TASK-ROOT-1']),
+				}),
+			],
+			fleet: createFleetState([
+				createAgentState({
+					dispatchId: 'disp-live-1',
+					taskId: 'TASK-ROOT-1',
+					status: AgentStatus.Running,
+					lastHeartbeat: now - 20_000,
+				}),
+			]),
+			reviewGates: [
+				createReviewGateState({
+					dispatchId: 'disp-other-1',
+					taskId: 'TASK-ROOT-1',
+					reviewState: WireReviewState.AwaitingReview,
+					attentionLevel: AttentionLevel.NeedsAction,
+				}),
+			],
+			mergeQueue: [
+				createMergeEntry({
+					dispatchId: 'disp-other-1',
+					taskId: 'TASK-ROOT-1',
+					status: MergeExecutionStatus.Pending,
+					attentionLevel: AttentionLevel.Active,
+				}),
+			],
+		});
+
+		const model = buildFleetCommandModel(state, now);
+		const runningItem = model.groups.find(group => group.id === 'running')?.items[0];
+
+		assert.ok(runningItem);
+		assert.strictEqual(model.groups.find(group => group.id === 'attention')?.count, 0);
+		assert.strictEqual(runningItem.hasReviewPressure, false);
+		assert.strictEqual(runningItem.hasMergePressure, false);
+		assert.strictEqual(runningItem.pressureSummary, undefined);
+		assert.deepStrictEqual(runningItem.pivots.map(pivot => pivot.id), ['agent:disp-live-1', 'swarm:TASK-ROOT-1']);
 	});
 });
 

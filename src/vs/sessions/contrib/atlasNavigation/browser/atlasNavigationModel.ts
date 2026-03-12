@@ -6,6 +6,7 @@
 /* eslint-disable local/code-import-patterns -- Phase 4 Atlas navigation models are sessions-only contrib code that summarizes sessions service state without introducing workbench leakage. */
 
 import { basename } from '../../../../base/common/path.js';
+import { AgentStatus, type IAgentState } from '../../../common/model/agent.js';
 import { AttentionLevel } from '../../../common/model/attention.js';
 import { NavigationSection, EntityKind, ReviewTargetKind, type INavigationSelection } from '../../../common/model/selection.js';
 import { MergeExecutionStatus, type IReviewGateState } from '../../../common/model/review.js';
@@ -70,6 +71,51 @@ export interface IFleetOverview {
 	readonly healthMode: string;
 	readonly queueDepth: number;
 	readonly attentionLevel: AttentionLevel;
+}
+
+export interface IFleetCommandPivot {
+	readonly id: string;
+	readonly label: string;
+	readonly target: AtlasModel.ISelectedEntity;
+}
+
+export interface IFleetCommandItem {
+	readonly id: string;
+	readonly dispatchId: string;
+	readonly roleLabel: string;
+	readonly taskId: string;
+	readonly swarmId: string | undefined;
+	readonly status: AtlasModel.AgentStatus;
+	readonly statusLabel: string;
+	readonly attentionLevel: AttentionLevel;
+	readonly lastHeartbeat: number;
+	readonly heartbeatLabel: string;
+	readonly timeInStateLabel: string;
+	readonly lastActivityLabel: string;
+	readonly pressureSummary: string | undefined;
+	readonly hasReviewPressure: boolean;
+	readonly hasMergePressure: boolean;
+	readonly primaryTarget: AtlasModel.ISelectedEntity;
+	readonly pivots: readonly IFleetCommandPivot[];
+}
+
+export interface IFleetCommandGroup {
+	readonly id: string;
+	readonly label: string;
+	readonly summary: string;
+	readonly count: number;
+	readonly attentionLevel: AttentionLevel;
+	readonly emptyMessage: string;
+	readonly items: readonly IFleetCommandItem[];
+}
+
+export interface IFleetCommandModel {
+	readonly title: string;
+	readonly subtitle: string;
+	readonly emptyMessage: string;
+	readonly stats: readonly IAtlasShellStat[];
+	readonly groups: readonly IFleetCommandGroup[];
+	readonly totalAgents: number;
 }
 
 export interface IAtlasShellStat {
@@ -253,6 +299,70 @@ export function buildFleetOverview(
 		healthMode: formatStateLabel(health.mode),
 		queueDepth: health.queueDepth,
 		attentionLevel: highestAttention([fleet.attentionLevel, health.attentionLevel]),
+	};
+}
+
+export function buildFleetCommandModel(
+	state: IAtlasStateSnapshot,
+	now: number = Date.now(),
+): IFleetCommandModel {
+	const overview = buildFleetOverview(state.connection, state.fleet, state.health, state.swarms);
+	const items = buildFleetCommandItems(state.fleet.agents, state.swarms, state.reviewGates, state.mergeQueue, now);
+	const attentionCount = items.filter(item => item.hasReviewPressure || item.hasMergePressure).length;
+
+	return {
+		title: 'Fleet Command',
+		subtitle: 'Read-only operator awareness across connection, pool health, queue pressure, and live agent execution.',
+		emptyMessage: emptyMessageForConnection(state.connection, 'No fleet activity is visible for this workspace yet.'),
+		totalAgents: items.length,
+		stats: [
+			stat('Connection', overview.connectionLabel, state.connection.state === HarnessConnectionState.Connected ? AttentionLevel.Idle : AttentionLevel.NeedsAction),
+			stat('Health', overview.healthMode, state.health.attentionLevel),
+			stat('Queue depth', String(overview.queueDepth), state.health.queueDepth > 0 ? AttentionLevel.Active : undefined),
+			stat('Running', String(overview.activeAgents), overview.activeAgents > 0 ? AttentionLevel.Active : undefined),
+			stat('Blocked', String(overview.blockedAgents), overview.blockedAgents > 0 ? AttentionLevel.NeedsAction : undefined),
+			stat('Failed', String(overview.failedAgents), overview.failedAgents > 0 ? AttentionLevel.Critical : undefined),
+			stat('Critical swarms', String(overview.criticalSwarms), overview.criticalSwarms > 0 ? AttentionLevel.Critical : undefined),
+			stat('Needs action swarms', String(overview.needsActionSwarms), overview.needsActionSwarms > 0 ? AttentionLevel.NeedsAction : undefined),
+			stat('Review pressure', String(attentionCount), attentionCount > 0 ? AttentionLevel.NeedsAction : undefined),
+		],
+		groups: Object.freeze([
+			buildFleetCommandGroup(
+				'attention',
+				'Needs review / merge attention',
+				'Live dispatches that are directly carrying review or merge pressure.',
+				items.filter(item => item.hasReviewPressure || item.hasMergePressure),
+				'No live agents are currently carrying direct review or merge pressure.',
+			),
+			buildFleetCommandGroup(
+				'running',
+				'Running',
+				'Dispatches actively executing or spawning on the current harness fabric.',
+				items.filter(item => isRunningAgentStatus(item.status)),
+				'No agents are currently running.',
+			),
+			buildFleetCommandGroup(
+				'blocked',
+				'Blocked',
+				'Dispatches waiting on dependencies, external state, or human follow-up.',
+				items.filter(item => item.status === AgentStatus.Blocked),
+				'No agents are currently blocked.',
+			),
+			buildFleetCommandGroup(
+				'failed',
+				'Failed',
+				'Dispatches that failed closed or timed out and need operator awareness.',
+				items.filter(item => isFailedAgentStatus(item.status)),
+				'No failed or timed-out agents are visible.',
+			),
+			buildFleetCommandGroup(
+				'idle',
+				'Idle / recent',
+				'Dispatches with no active execution in flight but still visible in fleet state.',
+				items.filter(item => item.status === AgentStatus.Idle || item.status === AgentStatus.Completed),
+				'No idle or recently completed agents are visible.',
+			),
+		]),
 	};
 }
 
@@ -477,6 +587,102 @@ function buildFleetShellModel(state: IAtlasStateSnapshot): IAtlasShellModel {
 	};
 }
 
+function buildFleetCommandItems(
+	agents: readonly IAgentState[],
+	swarms: readonly ISwarmState[],
+	reviewGates: readonly IReviewGateState[],
+	mergeQueue: readonly AtlasModel.IMergeEntry[],
+	now: number,
+): readonly IFleetCommandItem[] {
+	const swarmByTaskId = indexSwarmsByTaskId(swarms);
+	const reviewByDispatchId = new Map(reviewGates.filter(isReviewOutstanding).map(gate => [gate.dispatchId, gate] as const));
+	const mergeByDispatchId = new Map(mergeQueue.filter(isMergeAttentionEntry).map(entry => [entry.dispatchId, entry] as const));
+
+	return Object.freeze([...agents]
+		.map(agent => {
+			const swarmId = swarmByTaskId.get(agent.taskId)?.swarmId;
+			const gate = reviewByDispatchId.get(agent.dispatchId);
+			const merge = mergeByDispatchId.get(agent.dispatchId);
+			const primaryTarget: AtlasModel.ISelectedEntity = { kind: EntityKind.Agent, id: agent.dispatchId };
+			const ownershipTarget: AtlasModel.ISelectedEntity = swarmId
+				? { kind: EntityKind.Swarm, id: swarmId }
+				: { kind: EntityKind.Task, id: agent.taskId };
+			const pivots: IFleetCommandPivot[] = [
+				{
+					id: `agent:${agent.dispatchId}`,
+					label: 'Agent',
+					target: primaryTarget,
+				},
+				{
+					id: swarmId ? `swarm:${swarmId}` : `task:${agent.taskId}`,
+					label: swarmId ? 'Swarm' : 'Task',
+					target: ownershipTarget,
+				},
+			];
+			if (gate) {
+				pivots.push({
+					id: reviewItemId(gate.dispatchId, ReviewTargetKind.Gate),
+					label: 'Gate',
+					target: { kind: EntityKind.Review, id: gate.dispatchId, reviewTargetKind: ReviewTargetKind.Gate },
+				});
+			}
+			if (merge) {
+				pivots.push({
+					id: reviewItemId(merge.dispatchId, ReviewTargetKind.Merge),
+					label: merge.status === MergeExecutionStatus.MergeBlocked ? 'Merge blocked' : 'Merge',
+					target: { kind: EntityKind.Review, id: merge.dispatchId, reviewTargetKind: ReviewTargetKind.Merge },
+				});
+			}
+
+			const pressureLabels: string[] = [];
+			if (gate) {
+				pressureLabels.push(`Gate ${formatStateLabel(gate.reviewState)}`);
+			}
+			if (merge) {
+				pressureLabels.push(`Merge ${formatStateLabel(merge.status)}`);
+			}
+
+			return {
+				id: agent.dispatchId,
+				dispatchId: agent.dispatchId,
+				roleLabel: agent.roleId,
+				taskId: agent.taskId,
+				swarmId,
+				status: agent.status,
+				statusLabel: formatStateLabel(agent.status),
+				attentionLevel: agent.attentionLevel,
+				lastHeartbeat: agent.lastHeartbeat,
+				heartbeatLabel: formatRecencyLabel(now, agent.lastHeartbeat),
+				timeInStateLabel: formatDurationLabel(agent.timeInState),
+				lastActivityLabel: agent.lastActivity ?? 'No recent activity reported',
+				pressureSummary: pressureLabels.length > 0 ? pressureLabels.join(' • ') : undefined,
+				hasReviewPressure: gate !== undefined,
+				hasMergePressure: merge !== undefined,
+				primaryTarget,
+				pivots: Object.freeze(pivots),
+			};
+		})
+		.sort(compareFleetCommandItems));
+}
+
+function buildFleetCommandGroup(
+	id: string,
+	label: string,
+	summary: string,
+	items: readonly IFleetCommandItem[],
+	emptyMessage: string,
+): IFleetCommandGroup {
+	return {
+		id,
+		label,
+		summary,
+		count: items.length,
+		attentionLevel: highestAttention(items.map(item => item.attentionLevel)),
+		emptyMessage,
+		items,
+	};
+}
+
 function indexSwarmsByTaskId(swarms: readonly ISwarmState[]): Map<string, ISwarmState> {
 	const index = new Map<string, ISwarmState>();
 	for (const swarm of swarms) {
@@ -491,6 +697,14 @@ function compareByAttentionThenUpdated(left: { attentionLevel: AttentionLevel; u
 	return right.attentionLevel - left.attentionLevel
 		|| right.updatedAt - left.updatedAt
 		|| left.swarmId.localeCompare(right.swarmId);
+}
+
+function compareFleetCommandItems(left: IFleetCommandItem, right: IFleetCommandItem): number {
+	return right.attentionLevel - left.attentionLevel
+		|| Number(right.hasMergePressure) - Number(left.hasMergePressure)
+		|| Number(right.hasReviewPressure) - Number(left.hasReviewPressure)
+		|| right.lastHeartbeat - left.lastHeartbeat
+		|| left.dispatchId.localeCompare(right.dispatchId);
 }
 
 function highestAttention(levels: readonly AttentionLevel[], fallback: AttentionLevel = AttentionLevel.Idle): AttentionLevel {
@@ -509,6 +723,42 @@ function stat(label: string, value: string, attentionLevel: AttentionLevel | und
 
 function reviewItemId(dispatchId: string, kind: ReviewTargetKind): string {
 	return `${kind}:${dispatchId}`;
+}
+
+function isMergeAttentionEntry(entry: AtlasModel.IMergeEntry): boolean {
+	return entry.status !== MergeExecutionStatus.Merged && entry.status !== MergeExecutionStatus.Abandoned;
+}
+
+function isRunningAgentStatus(status: AgentStatus): boolean {
+	return status === AgentStatus.Running || status === AgentStatus.Spawning;
+}
+
+function isFailedAgentStatus(status: AgentStatus): boolean {
+	return status === AgentStatus.Failed || status === AgentStatus.TimedOut;
+}
+
+function formatRecencyLabel(now: number, timestamp: number): string {
+	const deltaMs = Math.max(0, now - timestamp);
+	if (deltaMs < 60_000) {
+		return `${Math.max(1, Math.floor(deltaMs / 1000))}s ago`;
+	}
+	if (deltaMs < 3_600_000) {
+		return `${Math.floor(deltaMs / 60_000)}m ago`;
+	}
+	if (deltaMs < 86_400_000) {
+		return `${Math.floor(deltaMs / 3_600_000)}h ago`;
+	}
+	return `${Math.floor(deltaMs / 86_400_000)}d ago`;
+}
+
+function formatDurationLabel(durationMs: number): string {
+	if (durationMs < 60_000) {
+		return `${Math.max(1, Math.floor(durationMs / 1000))}s`;
+	}
+	if (durationMs < 3_600_000) {
+		return `${Math.floor(durationMs / 60_000)}m`;
+	}
+	return `${Math.floor(durationMs / 3_600_000)}h`;
 }
 
 export function formatConnectionLabel(connection: IHarnessConnectionInfo): string {

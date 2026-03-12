@@ -205,17 +205,25 @@ This shipped Phase 4 wave is intentionally narrower than the broader long-term v
 
 **Update titlebar**: Replace session picker with project/objective/swarm selector + fleet status badge + global controls (pause all, cost indicator).
 
-### Phase 3: Fleet Command
+### Phase 5: Fleet Command
 
-**New contribution**: `sessions/contrib/fleetCommand/browser/`
+The shipped Fleet Command wave lives inside the existing Atlas navigation center shell, not as a separate workbench contribution. It is a sessions-only, read-only operator surface backed directly by `IHarnessService` and the Phase 3 swarm state.
 
-The primary awareness surface. Can render in both sidebar (compact) and center stage (full).
-
-- Reads `IHarnessService.agents` observable
-- Implements attention model: sorts agents by needs-attention priority
-- Idle detection: agents with no heartbeat update > threshold
-- Blocked detection: agents in `blocked` state or stuck in loops
-- Cost burn: rate-of-spend indicators per agent and aggregate
+- Header strip surfaces:
+  - connection mode/state
+  - pool health mode
+  - queue depth
+  - running / blocked / failed agent counts
+  - critical / needs-action swarm counts
+  - live review / merge pressure count
+- Live dispatches are grouped into deterministic slices:
+  - `Needs review / merge attention`
+  - `Running`
+  - `Blocked`
+  - `Failed`
+  - `Idle / recent`
+- Each row pivots through `IFleetManagementService` into the existing `Agent`, `Tasks`, or `Reviews` sections.
+- No write controls, context menus, or deep inspector panes ship in this wave.
 
 ### Phase 4: Review Surfaces
 
@@ -234,16 +242,20 @@ sessions/contrib/review/
 
 The existing `changesView` and `codeReview` contributions provide a foundation for the diff and review toolbar.
 
-### Phase 5: Center Stage Modes
+### Future Center Stage Modes
 
-Extend the center area beyond chat to support multiple modes:
+The Phase 4/5 shipped center shell is intentionally narrower than the longer-term product roadmap:
 
-- **Objective Board**: DAG visualization of an objective's decomposition tree
-- **Swarm Board**: The default execution board for one root objective/task and its active agents, memory lane, worktrees, artifacts, and reviews
-- **Agent Execution View**: Extends the existing chat widget to show transcript + tool calls + diffs + cost for any agent (not just the active session)
-- **Fleet Grid**: New widget in `sessions/browser/widget/fleetGrid/` — tmux-style card grid of live agents
-- **Diff View**: Extends existing changes view to be agent-scoped and linkable to task/review
-- **Code View**: Already exists as modal editor
+- `Tasks`, `Agents`, and `Reviews` render truthful summary/detail shells from current harness state
+- `Fleet` renders the dedicated Fleet Command operator surface described above
+
+The broader center-stage boards remain later work:
+
+- **Objective Board**
+- **Swarm Board**
+- **Agent Execution View**
+- **Diff View**
+- **Code View** (already exists as a separate editor/modal surface)
 
 ### Phase 6: Right Inspector
 
@@ -311,6 +323,7 @@ interface IFleetManagementService {
     readonly selection: IObservable<INavigationSelection>;
     readonly selectedSection: IObservable<NavigationSection>;
     readonly selectedEntity: IObservable<ISelectedEntity | undefined>;
+    readonly selectedEntityKind: IObservable<EntityKind | undefined>;
 
     selectSection(section: NavigationSection): void;
     selectEntity(entity: ISelectedEntity | undefined): void;
@@ -318,13 +331,14 @@ interface IFleetManagementService {
     selectTask(taskId: string): void;
     selectObjective(objectiveId: string): void;
     selectSwarm(swarmId: string): void;
-    selectReview(dispatchId: string): void;
+    selectReview(dispatchId: string, targetKind?: ReviewTargetKind): void;
+    clearSelection(): void;
 
     openSwarmBoard(swarmId: string): Promise<void>;
     openObjectiveBoard(objectiveId: string): Promise<void>;
     openAgentView(dispatchId: string): Promise<void>;
     openFleetGrid(): Promise<void>;
-    openReview(dispatchId: string): Promise<void>;
+    openReview(dispatchId: string, targetKind?: ReviewTargetKind): Promise<void>;
 }
 ```
 

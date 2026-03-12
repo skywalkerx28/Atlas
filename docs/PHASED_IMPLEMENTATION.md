@@ -1595,7 +1595,7 @@ import 'vs/sessions/contrib/atlasNavigation/browser/atlasCenterShell.contributio
 
 ### Objective
 
-Build the primary awareness surface — a live dashboard showing all agents with status, cost, time, and attention flags. Renders in both sidebar (compact list in Agents view) and center stage (full Fleet Grid).
+Turn the `Fleet` section in the Atlas sessions shell into a real read-only operator command surface. The shipped Phase 5 wave lives inside the existing Atlas center shell, is backed only by current harness observables, and lets operators pivot into swarm, agent, and review context without introducing write controls.
 
 ### Prerequisites
 
@@ -1604,160 +1604,68 @@ Phase 3 (fleet state observables), Phase 4 (view container infrastructure).
 ### Deliverables
 
 ```
-src/vs/sessions/browser/widget/agentCard/
-├── agentCard.ts              Reusable agent card widget
-├── agentCard.css             Card styling with status colors
-└── agentCardRenderer.ts      ITreeRenderer for tree views
+src/vs/sessions/contrib/atlasNavigation/browser/
+├── atlasNavigationModel.ts         Fleet Command view-model builder
+├── atlasCenterShellViewPane.ts     Dedicated Fleet renderer inside the sessions center shell
+└── media/atlasCenterShellViewPane.css
 
-src/vs/sessions/browser/widget/fleetGrid/
-├── fleetGrid.ts              Grid widget: auto-layout agent cards
-├── fleetGrid.css             Grid styling
-└── fleetGridEditorInput.ts   EditorInput for center stage mode
-
-src/vs/sessions/contrib/fleetCommand/browser/
-├── fleetCommand.contribution.ts
-└── fleetCommandService.ts    IFleetCommandService: attention sorting, idle detection
+src/vs/sessions/contrib/atlasNavigation/test/node/
+└── atlasNavigationModel.test.ts    Fleet grouping / header / pivot regressions
 ```
 
 ### Implementation Steps
 
-#### 5.1 — Agent card widget
+#### 5.1 — Header / status strip
 
-A self-contained widget that renders one agent's state. Used by both the sidebar tree renderer and the fleet grid.
+Expose the current operator posture from shipped bridge state:
 
-```typescript
-// browser/widget/agentCard/agentCard.ts
+- harness connection mode/state
+- pool health mode
+- queue depth
+- running / blocked / failed agent counts
+- critical / needs-action swarm counts
+- live review / merge pressure count
 
-export class AgentCard extends Disposable {
-    private readonly domNode: HTMLElement;
+#### 5.2 — Grouped live dispatch slices
 
-    constructor(
-        container: HTMLElement,
-        private readonly agent: IObservable<IAgentState>,
-    ) {
-        super();
-        this.domNode = dom.append(container, dom.$('.agent-card'));
-        this._register(autorun(reader => {
-            const state = this.agent.read(reader);
-            this.render(state);
-        }));
-    }
+Build a dedicated Fleet Command model from current `IHarnessService` state and group live agent rows into deterministic slices:
 
-    private render(state: IAgentState): void {
-        // Status dot (colored circle: green/gray/orange/red/blue)
-        // Agent name (dispatch_id short form)
-        // Role badge (planner/worker/judge)
-        // Current task (task_id + summary truncated)
-        // Cost ($X.XX)
-        // Time in state (Xm Xs)
-        // Last activity (truncated line)
-        // Attention indicator (if NeedsAction or Critical)
-    }
-}
-```
+- `Needs review / merge attention`
+- `Running`
+- `Blocked`
+- `Failed`
+- `Idle / recent`
 
-Status color mapping (consistent across all surfaces):
+Each row stays read-only and shows only current truthful state:
 
-| Status | Color | CSS Variable |
-|---|---|---|
-| Running | Green | `--atlas-status-active` |
-| Idle | Gray | `--atlas-status-idle` |
-| Blocked | Orange | `--atlas-status-blocked` |
-| Failed | Red | `--atlas-status-critical` |
-| Reviewing | Blue | `--atlas-status-reviewing` |
-| Completed | Dimmed | `--atlas-status-completed` |
+- role label
+- dispatch id
+- task id
+- linked swarm id when known
+- current status
+- heartbeat recency
+- time in state
+- last activity
+- direct review / merge pressure when the same dispatch is carrying it
 
-#### 5.2 — Fleet grid widget
+#### 5.3 — Read-only pivots
 
-The center-stage fleet grid renders agent cards in a responsive grid layout.
+Each Fleet row must pivot through the existing sessions selection model only:
 
-```typescript
-// browser/widget/fleetGrid/fleetGrid.ts
+- `Agent`
+- owning `Swarm` or `Task`
+- `Gate` when the same dispatch has an outstanding review gate
+- `Merge` when the same dispatch is in the merge lane
 
-export class FleetGrid extends Disposable {
-    constructor(
-        container: HTMLElement,
-        @IHarnessService private readonly harnessService: IHarnessService,
-        @IFleetManagementService private readonly fleetService: IFleetManagementService,
-    ) {
-        super();
-        this._register(autorun(reader => {
-            const fleet = this.harnessService.fleet.read(reader);
-            this.layout(fleet.agents);
-        }));
-    }
-
-    private layout(agents: readonly IAgentState[]): void {
-        // Sort by attention level (Critical first, then NeedsAction, etc.)
-        // Render as CSS grid with auto-fill columns
-        // Each cell is an AgentCard
-        // Click card → fleetService.selectAgent(id) + open agent view
-        // Right-click → context menu (pause, cancel, steer, open terminal)
-    }
-}
-```
-
-#### 5.3 — Fleet command service
-
-Implements attention-based sorting, idle detection, and cost burn rate computation.
-
-```typescript
-// contrib/fleetCommand/browser/fleetCommandService.ts
-
-export class FleetCommandService extends Disposable {
-    constructor(
-        @IHarnessService private readonly harnessService: IHarnessService,
-    ) {
-        super();
-    }
-
-    /**
-     * Agents sorted by attention priority.
-     * Critical and NeedsAction always surface to top.
-     */
-    readonly sortedAgents: IObservable<readonly IAgentState[]>;
-
-    /**
-     * Agents idle beyond the configurable threshold (default 5 minutes).
-     */
-    readonly idleAgents: IObservable<readonly IAgentState[]>;
-
-    /**
-     * Agents in blocked state or stuck in loops (no progress for N minutes).
-     */
-    readonly blockedAgents: IObservable<readonly IAgentState[]>;
-
-    /**
-     * Aggregate cost burn rate ($/minute over last 5 minutes).
-     */
-    readonly costBurnRate: IObservable<number>;
-}
-```
-
-#### 5.4 — Fleet Grid as EditorInput
-
-Register the fleet grid as an editor that opens in the center stage:
-
-```typescript
-// browser/widget/fleetGrid/fleetGridEditorInput.ts
-
-export class FleetGridEditorInput extends EditorInput {
-    static readonly ID = 'atlas.fleetGridEditorInput';
-    readonly typeId = FleetGridEditorInput.ID;
-
-    getName(): string { return nls.localize('fleetGrid', "Fleet Grid"); }
-    getIcon(): ThemeIcon { return fleetGridIcon; }
-}
-```
+No write buttons, pause/cancel/review/merge actions, or fake deep inspector panes land in this wave.
 
 ### Validation
 
-- Agent cards render with correct status colors, update in real-time
-- Fleet grid auto-sizes to window dimensions
-- Clicking a card selects the agent and opens the agent view
-- Idle agents show warning indicator after threshold
-- Blocked agents surface to top of sorted list
-- Cost burn rate updates as agents execute
+- Fleet renders as a dedicated read-only operator surface inside the sessions center shell
+- Header counts reflect live connection, health, queue, agent, and swarm attention state
+- Running / blocked / failed / idle / review-pressure groups stay deterministic
+- Pivot buttons route through existing sessions selection state
+- No write controls or standard workbench leakage are introduced
 
 ---
 

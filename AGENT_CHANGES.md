@@ -1,5 +1,58 @@
 # Agent Changes
 
+## Phase 5
+
+### What landed
+
+- Turned the `Fleet` section in the sessions window into a real read-only operator surface inside the existing Atlas center shell.
+- Added a dedicated Fleet Command view-model builder in `src/vs/sessions/contrib/atlasNavigation/browser/atlasNavigationModel.ts`.
+- Replaced the lightweight Fleet summary center shell with grouped live dispatch slices and an operational header strip in `src/vs/sessions/contrib/atlasNavigation/browser/atlasCenterShellViewPane.ts`.
+- The shipped Fleet Command surface now shows:
+  - harness connection mode/state
+  - pool health mode
+  - queue depth
+  - running / blocked / failed agent counts
+  - critical / needs-action swarm counts
+  - direct review / merge pressure count
+- Live agent rows are grouped into deterministic read-only slices:
+  - `Needs review / merge attention`
+  - `Running`
+  - `Blocked`
+  - `Failed`
+  - `Idle / recent`
+
+### Read-only pivots shipped
+
+- Fleet rows now pivot through the existing sessions selection model only:
+  - `Agent`
+  - owning `Swarm` when Atlas can map the dispatch back to a derived swarm
+  - root `Task` when no swarm mapping is available
+  - `Gate` when the same dispatch has an outstanding review gate
+  - `Merge` when the same dispatch is in the merge lane
+- Review / merge pressure stays dispatch-scoped. Atlas does not smear a task-level review entry across unrelated live agents in the same rooted lineage.
+- No pause / cancel / review / merge buttons or hidden write affordances were added.
+
+### Tests added or updated
+
+- `src/vs/sessions/contrib/atlasNavigation/test/node/atlasNavigationModel.test.ts`
+
+### Verification
+
+- `git diff --check`: passed
+- `node build/checker/layersChecker.ts`: passed
+- `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run compile-check-ts-native`: failed only on pre-existing unrelated noise in `src/vs/server/node/webClientServer.ts`
+  - `src/vs/server/node/webClientServer.ts(17,84)` `TS6133` `builtinExtensionsPath`
+  - `src/vs/server/node/webClientServer.ts(29,10)` `TS6133` `IExtensionManifest`
+- Focused sessions Fleet tests:
+  - `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run test-node -- --runGlob "vs/sessions/contrib/atlasNavigation/test/node/*.test.js"`: passed
+
+### Intentionally unimplemented
+
+- Deep inspector panes for agent internals, worktree details, transcript, memory, or result packets
+- Any write/control actions from Fleet
+- Titlebar redesign, review editor flows, or multi-monitor work
+- Cost/activity/transcript-specific Fleet enrichments beyond the current truthful bridge state
+
 ## Phase 4
 
 ### What landed
@@ -149,7 +202,7 @@
 
 ### Intentionally unimplemented
 
-- Phase 4+ UI surfaces (left rail, fleet command, review panes, inspector, titlebar)
+- Phase 4+ UI surfaces beyond the Phase 3 service/model layer (review panes, inspector, titlebar)
 - `IFleetManagementService` runtime implementation and selection/navigation wiring
 - Cost/activity/transcript adoption
 - Memory, result packet, and worktree inspection reads
