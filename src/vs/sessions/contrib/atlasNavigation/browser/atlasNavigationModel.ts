@@ -7,7 +7,7 @@
 
 import { basename } from '../../../../base/common/path.js';
 import { AttentionLevel } from '../../../common/model/attention.js';
-import { NavigationSection, EntityKind, type INavigationSelection } from '../../../common/model/selection.js';
+import { NavigationSection, EntityKind, ReviewTargetKind, type INavigationSelection } from '../../../common/model/selection.js';
 import { MergeExecutionStatus, type IReviewGateState } from '../../../common/model/review.js';
 import { SwarmPhase, type ISwarmState } from '../../../common/model/swarm.js';
 import { TaskStatus, type ITaskState } from '../../../common/model/task.js';
@@ -45,16 +45,12 @@ export interface IAgentNavigationItem {
 	readonly updatedAt: number;
 }
 
-export const enum ReviewNavigationKind {
-	Gate = 'gate',
-	Merge = 'merge',
-}
-
 export interface IReviewNavigationItem {
+	readonly id: string;
 	readonly dispatchId: string;
 	readonly taskId: string;
 	readonly swarmId: string | undefined;
-	readonly kind: ReviewNavigationKind;
+	readonly kind: ReviewTargetKind;
 	readonly title: string;
 	readonly subtitle: string;
 	readonly status: string;
@@ -205,10 +201,11 @@ export function buildReviewNavigationItems(
 ): readonly IReviewNavigationItem[] {
 	const swarmByTaskId = indexSwarmsByTaskId(swarms);
 	const gateItems = reviewGates.map(gate => ({
+		id: reviewItemId(gate.dispatchId, ReviewTargetKind.Gate),
 		dispatchId: gate.dispatchId,
 		taskId: gate.taskId,
 		swarmId: swarmByTaskId.get(gate.taskId)?.swarmId,
-		kind: ReviewNavigationKind.Gate,
+		kind: ReviewTargetKind.Gate,
 		title: gate.roleId,
 		subtitle: gate.stateReason ?? gate.taskId,
 		status: formatStateLabel(gate.reviewState),
@@ -216,10 +213,11 @@ export function buildReviewNavigationItems(
 		updatedAt: gate.updatedAt,
 	}));
 	const mergeItems = mergeQueue.map(entry => ({
+		id: reviewItemId(entry.dispatchId, ReviewTargetKind.Merge),
 		dispatchId: entry.dispatchId,
 		taskId: entry.taskId,
 		swarmId: swarmByTaskId.get(entry.taskId)?.swarmId,
-		kind: ReviewNavigationKind.Merge,
+		kind: ReviewTargetKind.Merge,
 		title: basename(entry.worktreePath) || entry.candidateBranch,
 		subtitle: entry.blockedReason ?? entry.taskId,
 		status: formatStateLabel(entry.status),
@@ -387,7 +385,9 @@ function buildAgentsShellModel(selection: INavigationSelection, state: IAtlasSta
 
 function buildReviewsShellModel(selection: INavigationSelection, state: IAtlasStateSnapshot): IAtlasShellModel {
 	const reviewItems = buildReviewNavigationItems(state.reviewGates, state.mergeQueue, state.swarms);
-	const dispatchId = selection.entity?.kind === EntityKind.Review ? selection.entity.id : undefined;
+	const selectedReview = selection.entity?.kind === EntityKind.Review ? selection.entity : undefined;
+	const dispatchId = selectedReview?.id;
+	const selectedKind = selectedReview?.reviewTargetKind;
 	const gate = dispatchId ? state.reviewGates.find(entry => entry.dispatchId === dispatchId) : undefined;
 	const merge = dispatchId ? state.mergeQueue.find(entry => entry.dispatchId === dispatchId) : undefined;
 
@@ -403,21 +403,30 @@ function buildReviewsShellModel(selection: INavigationSelection, state: IAtlasSt
 				stat('Merge pending', String(state.mergeQueue.filter(entry => entry.status === MergeExecutionStatus.Pending || entry.status === MergeExecutionStatus.MergeStarted).length), AttentionLevel.Active),
 			],
 			items: reviewItems.map(item => ({
-				id: item.dispatchId,
+				id: item.id,
 				label: item.title,
-				description: `${item.kind === ReviewNavigationKind.Gate ? 'Gate' : 'Merge'} • ${item.subtitle}`,
+				description: `${item.kind === ReviewTargetKind.Gate ? 'Gate' : 'Merge'} • ${item.subtitle}`,
 				status: item.status,
 				attentionLevel: item.attentionLevel,
 			})),
 		};
 	}
 
-	const sourceAttention = gate?.attentionLevel ?? merge?.attentionLevel ?? AttentionLevel.Idle;
+	const primaryKind = selectedKind ?? (gate ? ReviewTargetKind.Gate : ReviewTargetKind.Merge);
+	const sourceAttention = primaryKind === ReviewTargetKind.Merge
+		? merge?.attentionLevel ?? gate?.attentionLevel ?? AttentionLevel.Idle
+		: gate?.attentionLevel ?? merge?.attentionLevel ?? AttentionLevel.Idle;
+	const title = primaryKind === ReviewTargetKind.Merge
+		? basename(merge?.worktreePath ?? '') || merge?.candidateBranch || dispatchId
+		: gate?.roleId ?? dispatchId;
+	const subtitle = primaryKind === ReviewTargetKind.Merge
+		? `Merge lane for dispatch ${dispatchId}`
+		: `Review gate for dispatch ${dispatchId}`;
 
 	return {
 		section: NavigationSection.Reviews,
-		title: gate ? gate.roleId : basename(merge!.worktreePath) || merge!.candidateBranch,
-		subtitle: `Dispatch ${dispatchId}`,
+		title,
+		subtitle,
 		emptyMessage: 'No review history is available for this dispatch.',
 		stats: [
 			stat('Gate', gate ? formatStateLabel(gate.reviewState) : '—', gate ? gate.attentionLevel : undefined),
@@ -426,14 +435,14 @@ function buildReviewsShellModel(selection: INavigationSelection, state: IAtlasSt
 		],
 		items: [
 			gate ? {
-				id: `gate:${gate.dispatchId}`,
+				id: reviewItemId(gate.dispatchId, ReviewTargetKind.Gate),
 				label: gate.taskId,
 				description: gate.stateReason ?? gate.baseRef,
 				status: formatStateLabel(gate.reviewState),
 				attentionLevel: gate.attentionLevel,
 			} : undefined,
 			merge ? {
-				id: `merge:${merge.dispatchId}`,
+				id: reviewItemId(merge.dispatchId, ReviewTargetKind.Merge),
 				label: merge.taskId,
 				description: merge.blockedReason ?? merge.baseRef,
 				status: formatStateLabel(merge.status),
@@ -496,6 +505,10 @@ function highestAttention(levels: readonly AttentionLevel[], fallback: Attention
 
 function stat(label: string, value: string, attentionLevel: AttentionLevel | undefined = undefined): IAtlasShellStat {
 	return { label, value, attentionLevel };
+}
+
+function reviewItemId(dispatchId: string, kind: ReviewTargetKind): string {
+	return `${kind}:${dispatchId}`;
 }
 
 export function formatConnectionLabel(connection: IHarnessConnectionInfo): string {

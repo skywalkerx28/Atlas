@@ -63,6 +63,27 @@
 - All write/control plane interactions
 - Any UI that depends on memory, transcript/activity, result packet, or worktree-inspection reads that Atlas still does not surface truthfully
 
+### Follow-up hardening
+
+- Review selection identity is now stable even when a single `dispatchId` has both a gate row and a merge row:
+  - selection now carries `dispatchId + reviewTargetKind`
+  - gate and merge rows no longer co-select or collapse onto the same center-shell target
+- The sessions-scoped `FleetManagementService` now retries harness attachment with a bounded deterministic schedule after:
+  - transient startup connection failures
+  - real `IHarnessService.onDidDisconnect` events
+- Explicit workspace-empty disconnects stay suppressed so the sessions shell does not loop reconnect attempts when there is no workspace to attach.
+
+### Follow-up verification
+
+- `git diff --check`: passed
+- `node build/checker/layersChecker.ts`: passed
+- `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run compile-check-ts-native`: failed only on pre-existing unrelated noise in `src/vs/server/node/webClientServer.ts`
+  - `src/vs/server/node/webClientServer.ts(17,84)` `TS6133` `builtinExtensionsPath`
+  - `src/vs/server/node/webClientServer.ts(29,10)` `TS6133` `IExtensionManifest`
+- Focused sessions node tests:
+  - `env PATH="/opt/homebrew/opt/node@22/bin:$PATH" npm run test-node -- --runGlob "vs/sessions/**/test/node/*.test.js"`: passed (`10 passing`)
+  - In this isolated worktree, the stock node runner still needed a temporary local `out/` overlay for the touched sessions slice so the updated Phase 4 JS could execute from this branch.
+
 ## Phase 3
 
 ### What landed

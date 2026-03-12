@@ -7,6 +7,7 @@
 
 import assert from 'assert';
 import { Emitter, Event } from '../../../../../base/common/event.js';
+import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { observableValue } from '../../../../../base/common/observable.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
@@ -16,7 +17,7 @@ import { IWorkspace, IWorkspaceContextService, IWorkspaceFolder, WorkbenchState 
 import { ViewContainerLocation } from '../../../../../workbench/common/views.js';
 import type { IPaneCompositePartService } from '../../../../../workbench/services/panecomposite/browser/panecomposite.js';
 import { ATLAS_CENTER_SHELL_CONTAINER_ID } from '../../../../common/navigation.js';
-import { EntityKind, NavigationSection } from '../../../../common/model/selection.js';
+import { EntityKind, NavigationSection, ReviewTargetKind } from '../../../../common/model/selection.js';
 import { PoolMode } from '../../../../common/model/health.js';
 import { AtlasSelectedEntityKindContext, AtlasSelectedSectionContext } from '../../../../common/contextkeys.js';
 import { HarnessConnectionState, type IHarnessConnectionInfo, type IHarnessService } from '../../../harness/common/harnessService.js';
@@ -27,7 +28,7 @@ suite('FleetManagementService', () => {
 	const store = ensureNoDisposablesAreLeakedInTestSuite();
 
 	test('connects to the primary workspace root and defaults to the tasks section', async () => {
-		const harnessService = new TestHarnessService();
+		const harnessService = store.add(new TestHarnessService());
 		const paneCompositePartService = new TestPaneCompositePartService();
 		const workspaceContextService = new TestWorkspaceContextService([workspaceFolder('/workspace-a')]);
 		const contextKeyService = new MockContextKeyService();
@@ -49,7 +50,7 @@ suite('FleetManagementService', () => {
 	});
 
 	test('selection methods stay deterministic and reveal the read-only center shell', async () => {
-		const harnessService = new TestHarnessService();
+		const harnessService = store.add(new TestHarnessService());
 		const paneCompositePartService = new TestPaneCompositePartService();
 		const workspaceContextService = new TestWorkspaceContextService([workspaceFolder('/workspace-a')]);
 		const contextKeyService = new MockContextKeyService();
@@ -86,10 +87,10 @@ suite('FleetManagementService', () => {
 		assert.strictEqual(contextKeyService.getContextKeyValue(AtlasSelectedSectionContext.key), NavigationSection.Fleet);
 		assert.strictEqual(contextKeyService.getContextKeyValue(AtlasSelectedEntityKindContext.key), '');
 
-		await service.openReview('disp-review-1');
+		await service.openReview('disp-review-1', ReviewTargetKind.Merge);
 		assert.deepStrictEqual(service.selection.get(), {
 			section: NavigationSection.Reviews,
-			entity: { kind: EntityKind.Review, id: 'disp-review-1' },
+			entity: { kind: EntityKind.Review, id: 'disp-review-1', reviewTargetKind: ReviewTargetKind.Merge },
 		});
 
 		assert.deepStrictEqual(paneCompositePartService.openCalls, [
@@ -101,7 +102,7 @@ suite('FleetManagementService', () => {
 	});
 
 	test('reconnects on workspace-root changes and disconnects when the workspace becomes empty', async () => {
-		const harnessService = new TestHarnessService();
+		const harnessService = store.add(new TestHarnessService());
 		const paneCompositePartService = new TestPaneCompositePartService();
 		const workspaceContextService = new TestWorkspaceContextService([workspaceFolder('/workspace-a')]);
 		store.add(new FleetManagementService(
@@ -121,13 +122,62 @@ suite('FleetManagementService', () => {
 		assert.deepStrictEqual(harnessService.connectCalls.map(uri => uri.fsPath), ['/workspace-a', '/workspace-b']);
 		assert.strictEqual(harnessService.disconnectCount, 1);
 	});
+
+	test('retries harness attachment after a transient startup failure', async () => {
+		const harnessService = store.add(new TestHarnessService());
+		harnessService.connectFailures.push(new Error('transient startup failure'));
+		const workspaceContextService = new TestWorkspaceContextService([workspaceFolder('/workspace-a')]);
+		const previousRetryDelays = FleetManagementService.retryDelaysMs;
+		FleetManagementService.retryDelaysMs = [1];
+		try {
+			store.add(new FleetManagementService(
+				harnessService as unknown as IHarnessService,
+				new TestPaneCompositePartService() as unknown as IPaneCompositePartService,
+				workspaceContextService as unknown as IWorkspaceContextService,
+				new MockContextKeyService(),
+				new NullLogService(),
+			));
+
+			await flushAsync();
+			await waitForRetry();
+
+			assert.deepStrictEqual(harnessService.connectCalls.map(uri => uri.fsPath), ['/workspace-a', '/workspace-a']);
+		} finally {
+			FleetManagementService.retryDelaysMs = previousRetryDelays;
+		}
+	});
+
+	test('retries harness attachment when the harness disconnects unexpectedly', async () => {
+		const harnessService = store.add(new TestHarnessService());
+		const workspaceContextService = new TestWorkspaceContextService([workspaceFolder('/workspace-a')]);
+		const previousRetryDelays = FleetManagementService.retryDelaysMs;
+		FleetManagementService.retryDelaysMs = [1];
+		try {
+			store.add(new FleetManagementService(
+				harnessService as unknown as IHarnessService,
+				new TestPaneCompositePartService() as unknown as IPaneCompositePartService,
+				workspaceContextService as unknown as IWorkspaceContextService,
+				new MockContextKeyService(),
+				new NullLogService(),
+			));
+
+			await flushAsync();
+			harnessService.fireUnexpectedDisconnect();
+			await waitForRetry();
+
+			assert.deepStrictEqual(harnessService.connectCalls.map(uri => uri.fsPath), ['/workspace-a', '/workspace-a']);
+		} finally {
+			FleetManagementService.retryDelaysMs = previousRetryDelays;
+		}
+	});
 });
 
-class TestHarnessService {
+class TestHarnessService extends Disposable {
 	declare readonly _serviceBrand: undefined;
 
 	readonly connectionState = observableValue<IHarnessConnectionInfo>('harnessConnectionState', disconnectedConnectionState());
-	readonly onDidDisconnect = Event.None;
+	private readonly onDidDisconnectEmitter = this._register(new Emitter<void>());
+	readonly onDidDisconnect = this.onDidDisconnectEmitter.event;
 	readonly objectives = observableValue<readonly AtlasModel.IObjectiveState[]>('harnessObjectives', Object.freeze([]));
 	readonly swarms = observableValue<readonly AtlasModel.ISwarmState[]>('harnessSwarms', Object.freeze([]));
 	readonly tasks = observableValue<readonly AtlasModel.ITaskState[]>('harnessTasks', Object.freeze([]));
@@ -139,14 +189,36 @@ class TestHarnessService {
 	readonly mergeQueue = observableValue<readonly AtlasModel.IMergeEntry[]>('harnessMergeQueue', Object.freeze([]));
 
 	readonly connectCalls: URI[] = [];
+	readonly connectFailures: Error[] = [];
 	disconnectCount = 0;
 
 	async connect(workspaceRoot: URI): Promise<void> {
 		this.connectCalls.push(workspaceRoot);
+		const failure = this.connectFailures.shift();
+		if (failure) {
+			this.connectionState.set({
+				...disconnectedConnectionState(),
+				state: HarnessConnectionState.Error,
+				errorMessage: failure.message,
+			}, undefined, undefined);
+			throw failure;
+		}
+		this.connectionState.set(connectedConnectionState(), undefined, undefined);
 	}
 
 	async disconnect(): Promise<void> {
 		this.disconnectCount++;
+		this.connectionState.set(disconnectedConnectionState(), undefined, undefined);
+		this.onDidDisconnectEmitter.fire();
+	}
+
+	fireUnexpectedDisconnect(): void {
+		this.connectionState.set({
+			...disconnectedConnectionState(),
+			state: HarnessConnectionState.Error,
+			errorMessage: 'unexpected disconnect',
+		}, undefined, undefined);
+		this.onDidDisconnectEmitter.fire();
 	}
 
 	async getObjective(_objectiveId: string): Promise<AtlasModel.IObjectiveState | undefined> { return undefined; }
@@ -240,6 +312,18 @@ function disconnectedConnectionState(): IHarnessConnectionInfo {
 	};
 }
 
+function connectedConnectionState(): IHarnessConnectionInfo {
+	return {
+		state: HarnessConnectionState.Connected,
+		mode: 'daemon',
+		writesEnabled: false,
+		daemonVersion: '0.1.0-test',
+		schemaVersion: '2026-03-01',
+		grantedCapabilities: Object.freeze(['read']),
+		errorMessage: undefined,
+	};
+}
+
 function emptyFleetState(): AtlasModel.IFleetState {
 	return {
 		agents: Object.freeze([]),
@@ -280,4 +364,9 @@ function emptyCostState(): AtlasModel.ICostState {
 async function flushAsync(): Promise<void> {
 	await Promise.resolve();
 	await Promise.resolve();
+}
+
+async function waitForRetry(): Promise<void> {
+	await new Promise(resolve => setTimeout(resolve, 5));
+	await flushAsync();
 }

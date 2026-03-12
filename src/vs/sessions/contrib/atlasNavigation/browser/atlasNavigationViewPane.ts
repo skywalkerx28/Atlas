@@ -22,7 +22,7 @@ import { IContextKeyService } from '../../../../platform/contextkey/common/conte
 import { IOpenerService } from '../../../../platform/opener/common/opener.js';
 import { IHoverService } from '../../../../platform/hover/browser/hover.js';
 import { renderIcon } from '../../../../base/browser/ui/iconLabel/iconLabels.js';
-import { EntityKind, NavigationSection } from '../../../common/model/selection.js';
+import { EntityKind, NavigationSection, ReviewTargetKind } from '../../../common/model/selection.js';
 import { IFleetManagementService } from '../../../services/fleet/common/fleetManagementService.js';
 import { IHarnessService } from '../../../services/harness/common/harnessService.js';
 import {
@@ -34,7 +34,6 @@ import {
 	emptyMessageForConnection,
 	formatConnectionLabel,
 	formatStateLabel,
-	ReviewNavigationKind,
 	type IAgentNavigationItem,
 	type IAtlasSectionDescriptor,
 	type IFleetOverview,
@@ -218,7 +217,7 @@ export class AtlasNavigationViewPane extends ViewPane {
 		items: readonly IReviewNavigationItem[],
 		entity: AtlasModel.ISelectedEntity | undefined,
 	): void {
-		const outstanding = items.filter(item => item.kind === ReviewNavigationKind.Gate).length;
+		const outstanding = items.filter(item => item.kind === ReviewTargetKind.Gate).length;
 		this.renderSectionHeading(container, localize2('atlasNavigation.reviews', "Reviews").value, `${outstanding} gate entries`);
 		if (items.length === 0) {
 			this.renderEmpty(container, emptyMessageForConnection(this.harnessService.connectionState.get(), 'No review or merge entries are available.'));
@@ -229,15 +228,15 @@ export class AtlasNavigationViewPane extends ViewPane {
 		for (const item of items) {
 			const button = DOM.append(list, $('button.atlas-navigation-item')) as HTMLButtonElement;
 			button.type = 'button';
-			button.classList.toggle('selected', entity?.kind === EntityKind.Review && entity.id === item.dispatchId);
+			button.classList.toggle('selected', entity?.kind === EntityKind.Review && entity.id === item.dispatchId && entity.reviewTargetKind === item.kind);
 			button.classList.add(attentionClass(item.attentionLevel));
-			button.addEventListener('click', () => this.fleetManagementService.selectReview(item.dispatchId));
+			button.addEventListener('click', () => this.fleetManagementService.selectReview(item.dispatchId, item.kind));
 
 			const titleRow = DOM.append(button, $('div.atlas-navigation-item-title-row'));
 			const title = DOM.append(titleRow, $('div.atlas-navigation-item-title'));
 			title.textContent = item.title;
 			const kind = DOM.append(titleRow, $('span.atlas-navigation-kind-badge'));
-			kind.textContent = item.kind === ReviewNavigationKind.Gate ? 'Gate' : 'Merge';
+			kind.textContent = item.kind === ReviewTargetKind.Gate ? 'Gate' : 'Merge';
 
 			const subtitle = DOM.append(button, $('div.atlas-navigation-item-subtitle'));
 			subtitle.textContent = `${item.status} • ${item.subtitle}`;

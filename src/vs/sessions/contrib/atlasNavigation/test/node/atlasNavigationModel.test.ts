@@ -12,7 +12,7 @@ import { AttentionLevel } from '../../../../common/model/attention.js';
 import { PoolMode, type IHealthState } from '../../../../common/model/health.js';
 import { ObjectiveStatus, type IObjectiveState } from '../../../../common/model/objective.js';
 import { MergeExecutionStatus, type IMergeEntry, type IReviewGateState } from '../../../../common/model/review.js';
-import { EntityKind, NavigationSection, type INavigationSelection } from '../../../../common/model/selection.js';
+import { EntityKind, NavigationSection, ReviewTargetKind, type INavigationSelection } from '../../../../common/model/selection.js';
 import { SwarmPhase, type ISwarmState } from '../../../../common/model/swarm.js';
 import { TaskStatus, type ITaskState } from '../../../../common/model/task.js';
 import { ReviewDecision, WireDispatchPriority, WireIntegrationState, WirePromotionState, WireReviewState } from '../../../../common/model/wire.js';
@@ -22,7 +22,6 @@ import {
 	buildReviewNavigationItems,
 	buildSectionDescriptors,
 	buildTaskNavigationItems,
-	ReviewNavigationKind,
 } from '../../browser/atlasNavigationModel.js';
 
 suite('AtlasNavigationModel', () => {
@@ -155,9 +154,9 @@ suite('AtlasNavigationModel', () => {
 		];
 
 		const items = buildReviewNavigationItems(gates, merges, swarms);
-		assert.deepStrictEqual(items.map(item => ({ id: item.dispatchId, kind: item.kind, swarmId: item.swarmId })), [
-			{ id: 'disp-gate-1', kind: ReviewNavigationKind.Gate, swarmId: 'TASK-ROOT-1' },
-			{ id: 'disp-merge-1', kind: ReviewNavigationKind.Merge, swarmId: 'TASK-ROOT-1' },
+		assert.deepStrictEqual(items.map(item => ({ id: item.id, dispatchId: item.dispatchId, kind: item.kind, swarmId: item.swarmId })), [
+			{ id: 'gate:disp-gate-1', dispatchId: 'disp-gate-1', kind: ReviewTargetKind.Gate, swarmId: 'TASK-ROOT-1' },
+			{ id: 'merge:disp-merge-1', dispatchId: 'disp-merge-1', kind: ReviewTargetKind.Merge, swarmId: 'TASK-ROOT-1' },
 		]);
 
 		const model = buildAtlasShellModel(
@@ -171,7 +170,56 @@ suite('AtlasNavigationModel', () => {
 		assert.strictEqual(model.section, NavigationSection.Reviews);
 		assert.strictEqual(model.title, 'Reviews');
 		assert.deepStrictEqual(model.stats.map(item => item.value), ['1', '0', '1']);
-		assert.deepStrictEqual(model.items.map(item => item.id), ['disp-gate-1', 'disp-merge-1']);
+		assert.deepStrictEqual(model.items.map(item => item.id), ['gate:disp-gate-1', 'merge:disp-merge-1']);
+	});
+
+	test('keeps gate and merge review selections distinct when they share a dispatch id', () => {
+		const dispatchId = 'disp-shared-1';
+		const swarms = [
+			createSwarmState({
+				swarmId: 'TASK-ROOT-1',
+				rootTaskId: 'TASK-ROOT-1',
+				taskIds: Object.freeze(['TASK-ROOT-1']),
+			}),
+		];
+		const gates = [
+			createReviewGateState({
+				dispatchId,
+				taskId: 'TASK-ROOT-1',
+				roleId: 'gate-reviewer',
+				reviewState: WireReviewState.AwaitingReview,
+				attentionLevel: AttentionLevel.NeedsAction,
+			}),
+		];
+		const merges = [
+			createMergeEntry({
+				dispatchId,
+				taskId: 'TASK-ROOT-1',
+				candidateBranch: 'feature/shared-dispatch',
+				worktreePath: '/workspace/feature/shared-dispatch',
+				status: MergeExecutionStatus.Pending,
+				attentionLevel: AttentionLevel.Active,
+			}),
+		];
+
+		const items = buildReviewNavigationItems(gates, merges, swarms);
+		assert.deepStrictEqual(items.map(item => item.id).sort(), ['gate:disp-shared-1', 'merge:disp-shared-1']);
+
+		const gateModel = buildAtlasShellModel(
+			{ section: NavigationSection.Reviews, entity: { kind: EntityKind.Review, id: dispatchId, reviewTargetKind: ReviewTargetKind.Gate } },
+			createAtlasStateSnapshot({ swarms, reviewGates: gates, mergeQueue: merges }),
+		);
+		const mergeModel = buildAtlasShellModel(
+			{ section: NavigationSection.Reviews, entity: { kind: EntityKind.Review, id: dispatchId, reviewTargetKind: ReviewTargetKind.Merge } },
+			createAtlasStateSnapshot({ swarms, reviewGates: gates, mergeQueue: merges }),
+		);
+
+		assert.strictEqual(gateModel.title, 'gate-reviewer');
+		assert.strictEqual(gateModel.subtitle, `Review gate for dispatch ${dispatchId}`);
+		assert.strictEqual(mergeModel.title, 'shared-dispatch');
+		assert.strictEqual(mergeModel.subtitle, `Merge lane for dispatch ${dispatchId}`);
+		assert.deepStrictEqual(gateModel.items.map(item => item.id), ['gate:disp-shared-1', 'merge:disp-shared-1']);
+		assert.deepStrictEqual(mergeModel.items.map(item => item.id), ['gate:disp-shared-1', 'merge:disp-shared-1']);
 	});
 });
 

@@ -26,6 +26,7 @@ declare global {
 		type AttentionLevel = import('./attention.js').AttentionLevel;
 		type EntityKind = import('./selection.js').EntityKind;
 		type NavigationSection = import('./selection.js').NavigationSection;
+		type ReviewTargetKind = import('./selection.js').ReviewTargetKind;
 		type ISelectedEntity = import('./selection.js').ISelectedEntity;
 		type INavigationSelection = import('./selection.js').INavigationSelection;
 

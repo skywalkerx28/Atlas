@@ -20,10 +20,23 @@ export const enum NavigationSection {
 	Fleet = 'fleet',
 }
 
-export interface ISelectedEntity {
-	readonly kind: EntityKind;
+export const enum ReviewTargetKind {
+	Gate = 'gate',
+	Merge = 'merge',
+}
+
+export interface IBaseSelectedEntity {
+	readonly kind: Exclude<EntityKind, EntityKind.Review>;
 	readonly id: string;
 }
+
+export interface IReviewSelectedEntity {
+	readonly kind: EntityKind.Review;
+	readonly id: string;
+	readonly reviewTargetKind: ReviewTargetKind;
+}
+
+export type ISelectedEntity = IBaseSelectedEntity | IReviewSelectedEntity;
 
 export interface INavigationSelection {
 	readonly section: NavigationSection;

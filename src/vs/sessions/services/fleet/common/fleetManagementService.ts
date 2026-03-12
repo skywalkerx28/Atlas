@@ -22,12 +22,12 @@ export interface IFleetManagementService {
 	selectTask(taskId: string): void;
 	selectObjective(objectiveId: string): void;
 	selectSwarm(swarmId: string): void;
-	selectReview(dispatchId: string): void;
+	selectReview(dispatchId: string, targetKind?: AtlasModel.ReviewTargetKind): void;
 	clearSelection(): void;
 
 	openSwarmBoard(swarmId: string): Promise<void>;
 	openObjectiveBoard(objectiveId: string): Promise<void>;
 	openAgentView(dispatchId: string): Promise<void>;
 	openFleetGrid(): Promise<void>;
-	openReview(dispatchId: string): Promise<void>;
+	openReview(dispatchId: string, targetKind?: AtlasModel.ReviewTargetKind): Promise<void>;
 }

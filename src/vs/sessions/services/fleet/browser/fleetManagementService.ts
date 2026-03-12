@@ -5,10 +5,10 @@
 
 /* eslint-disable local/code-import-patterns -- The sessions-scoped fleet management runtime owns Phase 4 selection/context state and must bridge sessions services with sessions UI contracts. */
 
-import { Queue } from '../../../../base/common/async.js';
+import { disposableTimeout, Queue } from '../../../../base/common/async.js';
 import { isEqual } from '../../../../base/common/resources.js';
 import { URI } from '../../../../base/common/uri.js';
-import { Disposable } from '../../../../base/common/lifecycle.js';
+import { Disposable, MutableDisposable } from '../../../../base/common/lifecycle.js';
 import { autorun, derived, observableValue } from '../../../../base/common/observable.js';
 import { IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
@@ -17,13 +17,16 @@ import { ViewContainerLocation } from '../../../../workbench/common/views.js';
 import { IPaneCompositePartService } from '../../../../workbench/services/panecomposite/browser/panecomposite.js';
 import { AtlasSelectedEntityKindContext, AtlasSelectedSectionContext } from '../../../common/contextkeys.js';
 import { ATLAS_CENTER_SHELL_CONTAINER_ID } from '../../../common/navigation.js';
-import { EntityKind, NavigationSection } from '../../../common/model/selection.js';
-import { IHarnessService } from '../../harness/common/harnessService.js';
+import { EntityKind, NavigationSection, ReviewTargetKind } from '../../../common/model/selection.js';
+import { HarnessConnectionState, IHarnessService } from '../../harness/common/harnessService.js';
 import { IFleetManagementService } from '../common/fleetManagementService.js';
+
+const CONNECTION_RETRY_DELAYS_MS = Object.freeze([1_000, 5_000, 15_000, 30_000, 60_000]);
 
 export class FleetManagementService extends Disposable implements IFleetManagementService {
 
 	declare readonly _serviceBrand: undefined;
+	static retryDelaysMs: readonly number[] = CONNECTION_RETRY_DELAYS_MS;
 
 	private readonly _selection = observableValue<AtlasModel.INavigationSelection>(this, {
 		section: NavigationSection.Tasks,
@@ -36,7 +39,11 @@ export class FleetManagementService extends Disposable implements IFleetManageme
 	readonly selectedEntityKind = derived(this, reader => this._selection.read(reader).entity?.kind);
 
 	private readonly workspaceConnectionQueue = new Queue<void>();
+	private readonly reconnectHandle = this._register(new MutableDisposable());
 	private connectedWorkspaceRoot: URI | undefined;
+	private readonly retryDelaysMs: readonly number[];
+	private reconnectAttempt = 0;
+	private suppressDisconnectRetry = false;
 
 	constructor(
 		@IHarnessService private readonly harnessService: IHarnessService,
@@ -46,6 +53,7 @@ export class FleetManagementService extends Disposable implements IFleetManageme
 		@ILogService private readonly logService: ILogService,
 	) {
 		super();
+		this.retryDelaysMs = FleetManagementService.retryDelaysMs;
 
 		const selectedEntityKindContext = AtlasSelectedEntityKindContext.bindTo(contextKeyService);
 		const selectedSectionContext = AtlasSelectedSectionContext.bindTo(contextKeyService);
@@ -55,8 +63,9 @@ export class FleetManagementService extends Disposable implements IFleetManageme
 			selectedSectionContext.set(this.selectedSection.read(reader));
 		}));
 
-		this._register(this.workspaceContextService.onDidChangeWorkspaceFolders(() => this.scheduleWorkspaceConnection()));
-		this.scheduleWorkspaceConnection();
+		this._register(this.workspaceContextService.onDidChangeWorkspaceFolders(() => this.scheduleWorkspaceConnection({ force: true, resetRetry: true })));
+		this._register(this.harnessService.onDidDisconnect(() => this.handleHarnessDisconnect()));
+		this.scheduleWorkspaceConnection({ resetRetry: true });
 	}
 
 	selectSection(section: AtlasModel.NavigationSection): void {
@@ -92,8 +101,8 @@ export class FleetManagementService extends Disposable implements IFleetManageme
 		void this.revealCenterShell();
 	}
 
-	selectReview(dispatchId: string): void {
-		this.setSelection(NavigationSection.Reviews, { kind: EntityKind.Review, id: dispatchId });
+	selectReview(dispatchId: string, targetKind: AtlasModel.ReviewTargetKind = ReviewTargetKind.Gate): void {
+		this.setSelection(NavigationSection.Reviews, { kind: EntityKind.Review, id: dispatchId, reviewTargetKind: targetKind });
 		void this.revealCenterShell();
 	}
 
@@ -121,14 +130,26 @@ export class FleetManagementService extends Disposable implements IFleetManageme
 		await this.revealCenterShell();
 	}
 
-	async openReview(dispatchId: string): Promise<void> {
-		this.setSelection(NavigationSection.Reviews, { kind: EntityKind.Review, id: dispatchId });
+	async openReview(dispatchId: string, targetKind: AtlasModel.ReviewTargetKind = ReviewTargetKind.Gate): Promise<void> {
+		this.setSelection(NavigationSection.Reviews, { kind: EntityKind.Review, id: dispatchId, reviewTargetKind: targetKind });
 		await this.revealCenterShell();
 	}
 
 	private setSelection(section: AtlasModel.NavigationSection, entity: AtlasModel.ISelectedEntity | undefined): void {
 		const current = this._selection.get();
-		if (current.section === section && current.entity?.kind === entity?.kind && current.entity?.id === entity?.id) {
+		if (current.section === section
+			&& current.entity?.kind === entity?.kind
+			&& current.entity?.id === entity?.id
+			&& current.entity?.kind !== EntityKind.Review
+			&& entity?.kind !== EntityKind.Review) {
+			return;
+		}
+
+		if (current.section === section
+			&& current.entity?.kind === EntityKind.Review
+			&& entity?.kind === EntityKind.Review
+			&& current.entity.id === entity.id
+			&& current.entity.reviewTargetKind === entity.reviewTargetKind) {
 			return;
 		}
 
@@ -139,31 +160,90 @@ export class FleetManagementService extends Disposable implements IFleetManageme
 		await this.paneCompositePartService.openPaneComposite(ATLAS_CENTER_SHELL_CONTAINER_ID, ViewContainerLocation.ChatBar, false);
 	}
 
-	private scheduleWorkspaceConnection(): void {
+	private scheduleWorkspaceConnection(options: { readonly force?: boolean; readonly resetRetry?: boolean } = {}): void {
+		if (options.resetRetry) {
+			this.resetReconnectSchedule();
+		}
+
 		void this.workspaceConnectionQueue.queue(async () => {
 			const nextWorkspaceRoot = this.getPrimaryWorkspaceRoot();
-			if (nextWorkspaceRoot && this.connectedWorkspaceRoot && isEqual(nextWorkspaceRoot, this.connectedWorkspaceRoot)) {
+			const currentConnectionState = this.harnessService.connectionState.get().state;
+			if (!options.force
+				&& nextWorkspaceRoot
+				&& this.connectedWorkspaceRoot
+				&& isEqual(nextWorkspaceRoot, this.connectedWorkspaceRoot)
+				&& currentConnectionState !== HarnessConnectionState.Disconnected
+				&& currentConnectionState !== HarnessConnectionState.Error) {
 				return;
 			}
 
 			if (!nextWorkspaceRoot) {
 				this.connectedWorkspaceRoot = undefined;
-				await this.harnessService.disconnect();
+				this.resetReconnectSchedule();
+				this.suppressDisconnectRetry = true;
+				try {
+					await this.harnessService.disconnect();
+				} finally {
+					this.suppressDisconnectRetry = false;
+				}
 				return;
 			}
 
 			try {
 				await this.harnessService.connect(nextWorkspaceRoot);
 				this.connectedWorkspaceRoot = nextWorkspaceRoot;
+				this.resetReconnectSchedule();
 			} catch (error) {
 				this.connectedWorkspaceRoot = undefined;
 				this.logService.warn(`Atlas harness connection failed for workspace ${nextWorkspaceRoot.toString()}: ${asErrorMessage(error)}`);
+				this.scheduleReconnect(nextWorkspaceRoot, asErrorMessage(error));
 			}
 		});
 	}
 
 	private getPrimaryWorkspaceRoot(): URI | undefined {
 		return this.workspaceContextService.getWorkspace().folders[0]?.uri;
+	}
+
+	private handleHarnessDisconnect(): void {
+		if (this.suppressDisconnectRetry) {
+			return;
+		}
+
+		this.connectedWorkspaceRoot = undefined;
+		const workspaceRoot = this.getPrimaryWorkspaceRoot();
+		if (!workspaceRoot) {
+			this.resetReconnectSchedule();
+			return;
+		}
+
+		this.scheduleReconnect(workspaceRoot, 'harness disconnected');
+	}
+
+	private scheduleReconnect(workspaceRoot: URI, reason: string): void {
+		if (this.reconnectHandle.value) {
+			return;
+		}
+		if (this.reconnectAttempt >= this.retryDelaysMs.length) {
+			this.logService.warn(`Atlas harness reconnect attempts exhausted for workspace ${workspaceRoot.toString()} after ${this.retryDelaysMs.length} tries.`);
+			return;
+		}
+
+		const delay = this.retryDelaysMs[this.reconnectAttempt++];
+		this.logService.info(`Atlas harness reconnect scheduled in ${delay}ms for workspace ${workspaceRoot.toString()} (${reason}).`);
+		this.reconnectHandle.value = disposableTimeout(() => {
+			this.reconnectHandle.clear();
+			const currentWorkspaceRoot = this.getPrimaryWorkspaceRoot();
+			if (!currentWorkspaceRoot || !isEqual(currentWorkspaceRoot, workspaceRoot)) {
+				return;
+			}
+			this.scheduleWorkspaceConnection({ force: true });
+		}, delay);
+	}
+
+	private resetReconnectSchedule(): void {
+		this.reconnectAttempt = 0;
+		this.reconnectHandle.clear();
 	}
 }
 
